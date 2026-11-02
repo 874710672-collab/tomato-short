@@ -311,6 +311,7 @@
     const wrap = el('div', 'split');
     const left = el('div');
     const right = el('div');
+    right.id = 'rightCol';
     wrap.appendChild(left); wrap.appendChild(right);
     root.appendChild(wrap);
 
@@ -349,14 +350,20 @@
     }
     left.appendChild(box);
 
-    if (k === 'topic' && text && !(busy && busy.step === k)) renderTopicPicker(right, s, text);
-    right.appendChild(reviewCard(k));
-    if (k === 'outline') right.appendChild(planCard());
-    if (s.history && s.history.length) right.appendChild(historyCard(s));
-    right.appendChild(el('div', 'pad'));
+    fillRight(right, k, text);
 
     // 流式输出目标
     app.streamEl = pre;
+  }
+
+  /* 右侧栏内容：方案卡 / 字数分配 / 审核意见 / 历史 */
+  function fillRight(root, k, text) {
+    const s = cur.steps[k];
+    if (k === 'topic' && text && !(busy && busy.step === k)) renderTopicPicker(root, s, text);
+    root.appendChild(reviewCard(k));
+    if (k === 'outline') root.appendChild(planCard());
+    if (s.history && s.history.length) root.appendChild(historyCard(s));
+    root.appendChild(el('div', 'pad'));
   }
 
   function versionTag(s) {
@@ -378,24 +385,75 @@
 
   function toggleManual(box, pre, k) {
     let ed = $('#manualEdit');
-    if (ed) { // 保存
-      const s = cur.steps[k];
-      s.versions[s.sel].text = ed.value;
-      pre.textContent = ed.value || '（空）';
-      persist();
-      ed.remove();
-      return;
-    }
+    if (ed) { closeManual(ed, pre, k); return; }
+
+    const s = cur.steps[k];
     ed = el('textarea');
     ed.id = 'manualEdit';
     ed.dataset.step = k;
+    ed.className = 'manual-editor';
     ed.value = Engine.cur(cur, k);
-    ed.style.cssText = 'width:100%;min-height:420px;line-height:1.85;border:1px solid #f3c9bb;border-radius:12px;padding:10px;';
     pre.style.display = 'none';
     box.insertBefore(ed, pre);
     ed.focus();
-    box.querySelector('.doc-ops .mini').textContent = '保存修改';
+
+    const btn = box.querySelector('.doc-ops .mini');
+    if (btn) btn.textContent = '完成编辑';
+
+    // 实时写回 + 同步右侧
+    let timer = null;
+    ed.oninput = () => {
+      const v = ed.value;
+      const ver = s.versions[s.sel];
+      if (ver) ver.text = v;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        Store.save(cur);
+        syncRight(k, v, ed);
+      }, 250);
+    };
+    ed.onblur = () => {
+      clearTimeout(timer);
+      Store.save(cur);
+      syncRight(k, v => v, ed);
+    };
   }
+
+  function closeManual(ed, pre, k) {
+    const s = cur.steps[k];
+    if (s.versions[s.sel]) s.versions[s.sel].text = ed.value;
+    pre.textContent = ed.value || '（空）';
+    pre.style.display = '';
+    persist();
+    ed.remove();
+    const box = pre.closest('.card');
+    const btn = box && box.querySelector('.doc-ops .mini');
+    if (btn) btn.textContent = '手动编辑';
+    syncRight(k, ed.value, null);
+  }
+
+  /* 只刷新右侧那一栏，避免整页重绘打断输入 */
+  function syncRight(k, textOrFn, ed) {
+    const holder = document.getElementById('rightCol');
+    if (!holder) return;
+    const box = document.getElementById('rightScroll');
+    const top = box ? box.scrollTop : 0;
+    const v = typeof textOrFn === 'function' ? textOrFn(Engine.cur(cur, k)) : textOrFn;
+    const frag = document.createElement('div');
+    fillRight(frag, k, v);
+    holder.innerHTML = '';
+    while (frag.firstChild) holder.appendChild(frag.firstChild);
+    if (box) box.scrollTop = top;
+    if (ed) {
+      const e2 = document.getElementById('manualEdit');
+      if (e2 && e2.value !== ed.value) {
+        const pos = e2.selectionStart;
+        e2.value = ed.value;
+        try { e2.setSelectionRange(pos, pos); } catch (x) {}
+      }
+    }
+  }
+
 
   function copy(t) {
     if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => toast('已复制'), () => fallbackCopy(t));
