@@ -28,16 +28,20 @@
     clearTimeout(toast._h);
     toast._h = setTimeout(() => { t.hidden = true; }, 2600);
   }
+  function lockScroll(on) {
+    document.body.style.overflow = on ? 'hidden' : '';
+  }
   function sheet(html, onMount) {
     const s = $('#sheet');
     $('#sheetBody').innerHTML = html;
     s.hidden = false;
+    lockScroll(true);
     const close = $('.close', $('#sheetBody'));
-    if (close) close.onclick = () => { s.hidden = true; };
-    s.onclick = (e) => { if (e.target === s) s.hidden = true; };
+    if (close) close.onclick = () => closeSheet();
+    s.onclick = (e) => { if (e.target === s) closeSheet(); };
     if (onMount) onMount($('#sheetBody'));
   }
-  function closeSheet() { $('#sheet').hidden = true; }
+  function closeSheet() { $('#sheet').hidden = true; lockScroll(false); }
   function fmtTime(ts) {
     const d = new Date(ts);
     const z = (n) => String(n).padStart(2, '0');
@@ -112,6 +116,7 @@
     renderSteps();
     $('#btnExport').hidden = !(view === 'project' && cur);
     $('#btnSet').hidden = view === 'settings';
+    $('#dock').classList.toggle('empty', !(view === 'project' && cur));
     els.bStop.hidden = !busy;
     if (view === 'home') { renderHome(); return; }
     if (view === 'settings') { renderSettings(); return; }
@@ -638,6 +643,11 @@
   };
 
   // 暴露给 Engine.autoDraft 的界面句柄
+
+  /* 启动：确保弹层/遮罩/提示都处于关闭状态 */
+  $('#sheet').hidden = true;
+  $('#toast').hidden = true;
+  lockScroll(false);
 
   /* 启动 */
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
