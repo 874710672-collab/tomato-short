@@ -71,6 +71,7 @@
   function renderTop() {
     if (view === 'home') { els.project.textContent = '短篇工坊'; els.sub.textContent = '共 ' + Store.projects().length + ' 个项目'; return; }
     if (view === 'settings') { els.project.textContent = '设置'; els.sub.textContent = '接口与提示词'; return; }
+    if (view === 'trends') { els.project.textContent = '热门方向库'; els.sub.textContent = cur ? ('已选 ' + ((cur.trends || []).length) + ' 个方向') : '先打开一个短篇再勾选'; return; }
     if (!cur) { els.project.textContent = '短篇工坊'; els.sub.textContent = '还没有项目'; return; }
     const t = Engine.tierInfo(cur);
     els.project.textContent = cur.title;
@@ -117,10 +118,12 @@
     renderSteps();
     $('#btnExport').hidden = !(view === 'project' && cur);
     $('#btnSet').hidden = view === 'settings';
-    $('#dock').classList.toggle('empty', !(view === 'project' && cur));
+    $('#dock').classList.toggle('empty', view !== 'project' || !cur);
+    $('#steps').hidden = !(view === 'project' && cur);
     els.bStop.hidden = !busy;
     if (view === 'home') { renderHome(); return; }
     if (view === 'settings') { renderSettings(); return; }
+    if (view === 'trends') { renderTrends(); return; }
     if (!cur) { renderEmpty(); return; }
     const k = cur.step;
     stage.innerHTML = '';
@@ -328,6 +331,17 @@
         vt.appendChild(t);
       });
       doc.appendChild(vt);
+    }
+
+    if (k === 'topic') {
+      const bar = el('div', 'topic-bar');
+      const n = (cur.trends || []).length;
+      const tb = el('button', 'mini' + (n ? ' on' : ''), n ? ('已选 ' + n + ' 个热门方向') : '参考热门方向');
+      tb.onclick = openTrends;
+      const cb = el('button', 'mini', '组合创意');
+      cb.onclick = doCombo;
+      bar.appendChild(tb); bar.appendChild(cb);
+      left.appendChild(bar);
     }
 
     const box = el('div', 'card');
@@ -724,6 +738,40 @@
     } catch (e) { endBusy(e); }
   }
 
+  /* 基于勾选的热门方向生成组合创意 */
+  async function doCombo() {
+    if (busy || !cur) return;
+    if (!Store.cfg().apiKey) { openSettings(); toast('先填 API Key'); return; }
+    const ids = cur.trends || [];
+    if (!ids.length) { toast('先去「参考热门方向」勾几个方向'); openTrends(); return; }
+    flushEdits();
+    const cards = TRENDS.all().filter(c => ids.includes(c.id));
+    const P = PROMPTS.get();
+    const s = cur.steps.topic;
+    setBusy('正在组合创意', 'topic');
+    try {
+      const out = await API.chat({
+        messages: API.buildMessages(P.system, PROMPTS.fill(P.trendSuggest, {
+          trends: TRENDS.brief(cards),
+          brief: Engine.briefText(cur.brief) || '（未填，自由发挥，但要有番茄短篇的爽感）',
+          feedback: (s.feedback || '').trim() ? '作者的意见：\n' + s.feedback : ''
+        })),
+        onDelta: (d, full) => {
+          busy.text = full;
+          if (app.streamEl) app.streamEl.textContent = full;
+          updateDock();
+        },
+        signal: busy.ctrl.signal
+      });
+      s.versions.push({ text: out.trim(), at: Date.now() });
+      s.sel = s.versions.length - 1;
+      s.status = 'ready';
+      s.picked = null;
+      s.feedback = '';
+      endBusy();
+    } catch (e) { endBusy(e); }
+  }
+
   function doApprove() {
     if (busy || !cur) return;
     flushEdits();
@@ -753,6 +801,237 @@
     toast('已通过，进入「' + STEP_NAME[cur.step] + '」');
     render();
   }
+  /* ===== 热门方向库 ===== */
+  function openTrends() {
+    flushEdits();
+    view = 'trends';
+    render();
+  }
+  function backFromTrends() { view = cur ? 'project' : 'home'; render(); }
+
+  function renderTrends() {
+    stage.innerHTML = '';
+    const cards = TRENDS.all();
+    const picked = (cur && cur.trends) || [];
+
+    // 顶部操作
+    const c = el('div', 'card');
+    const h = el('h3', '', '热门方向库');
+    h.appendChild(el('span', 'tag', cards.length + ' 个方向'));
+    c.appendChild(h);
+    c.appendChild(el('div', 'hint', '来源：番茄作家课堂官方文章。勾选后，在「选题立意」里可以基于这些方向生成组合创意。'));
+    const acts = el('div', 'doc-ops');
+    const b1 = el('button', 'mini', '＋ 粘贴新课堂文章');
+    b1.onclick = openTrendImport;
+    const b2 = el('button', 'mini', '检查更新');
+    b2.onclick = checkTrendUpdates;
+    acts.appendChild(b1); acts.appendChild(b2);
+    c.appendChild(acts);
+    stage.appendChild(c);
+
+    if (!cards.length) {
+      const e = el('div', 'card');
+      e.appendChild(el('div', 'hint', '方向库是空的，点上面「粘贴新课堂文章」导入。'));
+      stage.appendChild(e);
+      return;
+    }
+
+    // 卡片列表
+    cards.forEach(card => {
+      const box = el('div', 'card trend-card' + (picked.includes(card.id) ? ' on' : ''));
+      const top = el('div', 'trend-top');
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.checked = picked.includes(card.id);
+      cb.onchange = () => {
+        if (!cur) { toast('先打开或新建一个短篇'); cb.checked = false; return; }
+        cur.trends = cur.trends || [];
+        if (cb.checked) {
+          if (cur.trends.length >= 3) { toast('最多选 3 个方向，组合才有聚焦'); cb.checked = false; return; }
+          if (!cur.trends.includes(card.id)) cur.trends.push(card.id);
+        }
+        else cur.trends = cur.trends.filter(x => x !== card.id);
+        persist(); render();
+      };
+      top.appendChild(cb);
+      top.appendChild(el('div', 'trend-name', card.name));
+      box.appendChild(top);
+
+      const meta = el('div', 'trend-meta');
+      (card.parts || []).forEach(p => meta.appendChild(el('span', 'chip', p)));
+      box.appendChild(meta);
+
+      const dl = el('dl', 'trend-dl');
+      [['内核', card.core], ['钩子', card.hook], ['情绪', card.emotion], ['易崩', card.risk]].forEach(([k, v]) => {
+        if (!v) return;
+        dl.appendChild(el('dt', '', k));
+        dl.appendChild(el('dd', '', v));
+      });
+      box.appendChild(dl);
+
+      const foot = el('div', 'trend-foot');
+      if (card.src) foot.appendChild(el('span', 'src', card.src + (card.srcDate ? ' · ' + card.srcDate : '')));
+      const edit = el('button', 'mini', '编辑');
+      edit.onclick = () => openTrendEdit(card);
+      const del = el('button', 'mini danger', '删除');
+      del.onclick = () => {
+        if (!confirm('删除方向「' + card.name + '」？')) return;
+        TRENDS.remove(card.id);
+        render();
+      };
+      foot.appendChild(edit); foot.appendChild(del);
+      box.appendChild(foot);
+      stage.appendChild(box);
+    });
+    stage.appendChild(el('div', 'pad'));
+  }
+
+  function openTrendEdit(card) {
+    const f = (label, key, rows) => `
+      <div class="field"><label>${label}</label>${rows
+        ? `<textarea id="tf_${key}" rows="${rows}">${esc(card[key] || '')}</textarea>`
+        : `<input id="tf_${key}" value="${esc(card[key] || '')}">`}</div>`;
+    sheet(`<h2>编辑方向 <button class="close">✕</button></h2>
+      ${f('名称', 'name')}
+      ${f('组成（用 / 分隔）', 'parts')}
+      ${f('内核', 'core', 2)}
+      ${f('钩子', 'hook', 2)}
+      ${f('情绪走向', 'emotion')}
+      ${f('篇幅（s/m/l）', 'best')}
+      ${f('易写崩', 'risk', 2)}
+      <div class="sheet-acts"><button class="primary-btn" id="tfSave">保存</button></div>
+    `, (body) => {
+      $('#tfSave', body).onclick = () => {
+        const g = (k) => ($('#tf_' + k, body) || {}).value || '';
+        const parts = g('parts').trim();
+        const c2 = Object.assign({}, card, {
+          name: g('name').trim(),
+          parts: typeof parts === 'string' ? parts.split(/[\/、,，]/).map(x => x.trim()).filter(Boolean) : parts,
+          core: g('core').trim(), hook: g('hook').trim(), emotion: g('emotion').trim(),
+          best: g('best').trim(), risk: g('risk').trim()
+        });
+        if (!c2.name) { toast('名称不能为空'); return; }
+        TRENDS.upsert(c2);
+        closeSheet();
+        render();
+        toast('已保存');
+      };
+    });
+  }
+
+  /* 粘贴新课堂文章 -> AI 拆成方向卡 */
+  function openTrendImport() {
+    sheet(`<h2>导入作家课堂 <button class="close">✕</button></h2>
+      <div class="field"><label>文章链接（可选，能填就自动抓正文）</label>
+        <input id="tiUrl" placeholder="https://fanqienovel.com/writer/zone/article/…"></div>
+      <div class="field"><label>或直接粘贴正文</label>
+        <textarea id="tiText" rows="8" placeholder="把作家课堂那篇文章的正文整段粘进来…"></textarea></div>
+      <div class="err" id="tiMsg" hidden></div>
+      <div class="sheet-acts">
+        <button class="ghost-btn" id="tiFetch">抓取链接</button>
+        <button class="primary-btn" id="tiRun">拆成方向卡</button>
+      </div>
+    `, (body) => {
+      const msg = $('#tiMsg', body);
+      const say = (t, ok) => { msg.hidden = false; msg.textContent = t; msg.className = ok ? 'ok-box' : 'err'; };
+      $('#tiFetch', body).onclick = async () => {
+        const u = $('#tiUrl', body).value.trim();
+        if (!u) { say('先填链接'); return; }
+        say('正在抓取…', true);
+        try {
+          const r = await fetch(u, { mode: 'cors' });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          const html = await r.text();
+          const p = TRENDS.parseArticleHTML(html);
+          if (!p.text) throw new Error('没解析出正文');
+          $('#tiText', body).value = p.text;
+          say('已抓取：' + p.title + '（' + p.text.length + ' 字）', true);
+        } catch (e) {
+          say('抓取失败：' + e.message + '\n\n浏览器跨域限制，请手动复制正文粘到下面。', false);
+        }
+      };
+      $('#tiRun', body).onclick = async () => {
+        let text = $('#tiText', body).value.trim();
+        if (!text) { say('没有正文，先抓取或粘贴'); return; }
+        if (!Store.cfg().apiKey) { say('先去设置里填 API Key'); return; }
+        closeSheet();
+        await extractTrends(text);
+      };
+    });
+  }
+
+  /* 调 AI 把文章拆成方向卡 */
+  async function extractTrends(articleText) {
+    const P = PROMPTS.get();
+    const c = el('div', 'card');
+    c.id = 'extractCard';
+    c.appendChild(el('h3', '', '正在拆解方向…'));
+    const pre = el('div', 'doc streaming');
+    c.appendChild(pre);
+    stage.innerHTML = '';
+    stage.appendChild(c);
+    $('#dock').classList.add('empty');
+    try {
+      const out = await API.chat({
+        messages: API.buildMessages(P.system, PROMPTS.fill(P.trendExtract, { article: articleText.slice(0, 12000) })),
+        onDelta: (d, full) => { pre.textContent = full; },
+        temperature: 0.3
+      });
+      const cards = parseTrendCards(out);
+      if (!cards.length) throw new Error('没有解析出方向卡，原文：' + out.slice(0, 200));
+      cards.forEach(k => TRENDS.upsert(k));
+      toast('已导入 ' + cards.length + ' 个方向');
+      render();
+    } catch (e) {
+      stage.innerHTML = '';
+      const c2 = el('div', 'card');
+      c2.appendChild(el('h3', '', '拆解失败'));
+      c2.appendChild(el('div', 'err', e.message));
+      const back = el('button', 'primary-btn', '返回方向库');
+      back.onclick = () => render();
+      c2.appendChild(back);
+      stage.appendChild(c2);
+    }
+  }
+
+  function parseTrendCards(text) {
+    const blocks = text.split(/===方向===/).slice(1);
+    const out = [];
+    blocks.forEach(b => {
+      const body = b.split(/---方向结束---/)[0] || b;
+      const g = (k) => {
+        const m = body.match(new RegExp(k + '[:：]\\s*(.+)'));
+        return m ? m[1].trim() : '';
+      };
+      const name = g('名称');
+      if (!name) return;
+      const parts = g('组成').split(/[\/、,，]/).map(x => x.trim()).filter(Boolean);
+      out.push({
+        id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+        src: '作家课堂（导入）',
+        srcDate: new Date().toISOString().slice(0, 10),
+        name, parts,
+        core: g('内核'), hook: g('钩子'), emotion: g('情绪'),
+        best: g('篇幅') || 's,m', risk: g('易崩'),
+        on: true
+      });
+    });
+    return out;
+  }
+
+  /* 检查是否有新的课堂文章（跨域会被拦，给出降级提示） */
+  async function checkTrendUpdates() {
+    const ids = TRENDS.knownIds();
+    toast('正在检查…');
+    let ok = 0, blocked = 0;
+    for (const id of ids.slice(-5)) {
+      const r = await TRENDS.probe(id);
+      if (r && r.ok) ok++; else blocked++;
+    }
+    if (!blocked) toast('检查完成，没有新的文章');
+    else openTrendImport();
+  }
+
   /* ===== 空状态 ===== */
   function renderEmpty() {
     stage.innerHTML = '';
@@ -815,6 +1094,9 @@
     const imp = el('button', 'ghost-btn', '导入备份');
     imp.onclick = importBackup;
     top.appendChild(imp);
+    const tr = el('button', 'ghost-btn', '热门方向');
+    tr.onclick = openTrends;
+    top.appendChild(tr);
     stage.appendChild(top);
 
     const list = Store.projects();
@@ -938,7 +1220,8 @@
   }
 
   /* ===== 设置 ===== */
-  function openSettings() { flushEdits(); view = 'settings'; render(); }
+  let settingsBack = null;
+  function openSettings() { flushEdits(); settingsBack = (view === 'trends') ? 'trends' : null; view = 'settings'; render(); }
 
   function renderSettings() {
     stage.innerHTML = '';
@@ -983,7 +1266,7 @@
     };
     row.appendChild(test);
     const back = el('button', 'primary-btn', '返回');
-    back.onclick = () => { view = cur ? 'project' : 'home'; render(); };
+    back.onclick = () => { view = settingsBack || (cur ? 'project' : 'home'); settingsBack = null; render(); };
     row.appendChild(back);
     c.appendChild(row);
     c.appendChild(out);
@@ -1023,6 +1306,7 @@
   function renderTop() {
     if (view === 'home') { els.project.textContent = '短篇工坊'; els.sub.textContent = '共 ' + Store.projects().length + ' 个项目'; return; }
     if (view === 'settings') { els.project.textContent = '设置'; els.sub.textContent = '接口与提示词'; return; }
+    if (view === 'trends') { els.project.textContent = '热门方向库'; els.sub.textContent = cur ? ('已选 ' + ((cur.trends || []).length) + ' 个方向') : '先打开一个短篇再勾选'; return; }
     if (!cur) { els.project.textContent = '短篇工坊'; els.sub.textContent = '还没有项目'; return; }
     const t = Engine.tierInfo(cur);
     els.project.textContent = cur.title;
@@ -1072,6 +1356,7 @@
     els.bStop.hidden = !busy;
     if (view === 'home') { renderHome(); return; }
     if (view === 'settings') { renderSettings(); return; }
+    if (view === 'trends') { renderTrends(); return; }
     if (!cur) { renderEmpty(); return; }
     const k = cur.step;
     stage.innerHTML = '';
