@@ -136,5 +136,52 @@
     return (p.steps.draft.parts || []).map(x => x.title + '\n' + x.body).join('\n\n').trim();
   }
 
-  window.Engine = { briefText, tierInfo, cur, splitParts, outlinePlan, countWords, genStep, genPart, autoDraft, joinDraft };
+  /* ===== 改写原稿：带上上一版 + 意见，只改该改的地方 ===== */
+  const REVISE_RULE = `你现在是在**修改作者的上一版稿件**，不是在重新创作。
+
+上一版稿件：
+{{prevText}}
+
+作者的意见：
+{{feedback}}
+
+修改要求：
+1. 以「上一版稿件」为底稿，**只改作者意见里提到的地方**；
+2. 作者没说到的段落，尽量原样保留，不要改写、不要调整顺序、不要增删；
+3. 输出**完整全文**（不是只输出改动部分），格式与原稿一致；
+4. 如果意见里要求的改动与原稿有明显冲突，以意见为准，但要说明你改了哪里（在文末用「【改动】」列出，3条以内）；
+5. 不要加任何前言、客套话。`;
+
+  async function reviseStep(p, step, onDelta, signal) {
+    const P = PROMPTS.get();
+    const t = tierInfo(p);
+    const prev = cur(p, step);
+    const fb = (p.steps[step].feedback || '').trim();
+    if (!prev) throw new Error('还没有原稿，先用「重新生成」');
+    if (!fb) throw new Error('先写审核意见，才能按意见改');
+    const sys = P.system + '\n\n' + PROMPTS.fill(REVISE_RULE, { prevText: prev, feedback: fb });
+    // 用户消息仍给足上下文，便于判断上下文是否一致
+    const ctx = buildContext(p, step, t);
+    return API.chat({ messages: API.buildMessages(sys, ctx), onDelta, signal });
+  }
+
+  /* 各步骤的上下文（不含 feedback） */
+  function buildContext(p, step, t) {
+    const P = PROMPTS.get();
+    const brief = briefText(p.brief);
+    const map = { brief, tier: t.name, words: t.words, parts: t.parts, feedback: '' };
+    if (step === 'topic') return PROMPTS.fill(P.topic, map);
+    if (step === 'setting') return PROMPTS.fill(P.setting, Object.assign({}, map, { topic: window.pickedTopic ? window.pickedTopic() : cur(p, 'topic') }));
+    if (step === 'outline') return PROMPTS.fill(P.outline, Object.assign({}, map, { topic: cur(p, 'topic'), setting: cur(p, 'setting') }));
+    if (step === 'polish') return PROMPTS.fill(P.polish, Object.assign({}, map, { draft: cur(p, 'draft') }));
+    return brief;
+  }
+
+  /* 重新生成：不带原稿，从头来（意见仍然会作为要求带上） */
+  async function regenStep(p, step, onDelta, signal) {
+    return genStep(p, step, onDelta, signal);
+  }
+
+
+  window.Engine = { briefText, tierInfo, cur, splitParts, outlinePlan, countWords, genStep, genPart, autoDraft, joinDraft, reviseStep, regenStep, buildContext, REVISE_RULE };
 })();
