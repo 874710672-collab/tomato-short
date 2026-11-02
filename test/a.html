@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>番茄短篇工坊</title>
+<meta name="theme-color" content="#141210">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="a.json">
+<link rel="apple-touch-icon" href="../icon-180.png">
+
+<meta name="apple-mobile-web-app-title" content="短篇工坊">
+<link rel="stylesheet" href="../style.css?v=20">
+<link rel="stylesheet" href="../style2.css?v=20">
+<script>document.title="短篇工坊 A · minimal-ui";</script>
+</head>
+<body>
+<div id="pwaFill" aria-hidden="true"></div>
+<header id="topbar">
+  <div class="tb-left">
+    <button class="icon-btn" id="btnHome" title="项目列表">☰</button>
+    <div class="tb-title">
+      <span id="tbProject">短篇工坊</span>
+      <small id="tbSub">选择或新建一个项目</small>
+    </div>
+  </div>
+  <div class="tb-right">
+    <button class="ghost-btn" id="btnExport">导出</button>
+    <button class="icon-btn" id="btnSet" title="设置">⚙︎</button>
+  </div>
+</header>
+
+<nav id="steps"></nav>
+
+<main id="stage"></main>
+
+<footer id="dock">
+  <div class="dock-info" id="dockInfo">—</div>
+  <div class="dock-acts">
+    <button class="ghost-btn" id="btnStop" hidden>停止</button>
+    <button class="ghost-btn" id="btnRegen">重新生成</button>
+    <button class="primary-btn" id="btnGen">生成</button>
+    <button class="primary-btn" id="btnApprove" hidden>通过 · 进入下一环节</button>
+  </div>
+</footer>
+
+<div id="sheet" class="sheet-mask" hidden>
+  <div class="sheet" id="sheetBody"></div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="../store.js?v=20"></script>
+<script src="../prompts.js?v=20"></script>
+<script src="../api.js?v=20"></script>
+<script src="../trends.js?v=20"></script>
+<script src="../engine.js?v=20"></script>
+<script src="../app.js?v=20"></script>
+</body>
+</html>
