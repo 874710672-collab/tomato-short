@@ -10,7 +10,7 @@
 html,body{margin:0;height:100%}
 /* iOS 26/27 Liquid Glass：给 html 上实色，让系统采样到实色而不是页面内容，避免顶栏叠出模糊 */
 html{
-  background:#141210;
+  /* 顶栏同色：窗口/状态栏区域露出的底色与此一致，不会出现浅色带 */
   background-color:#141210;
 }
 body{
@@ -26,12 +26,7 @@ input,textarea,select{font-family:inherit;font-size:15px;color:inherit}
 /* iOS 26/27 主屏 PWA：顶部实色兜底垫（消除 Liquid Glass 采样模糊）。
    放在最底层，从状态栏一直铺到步骤条下沿；无 cover 时它被裁到可视区外，
    有 cover 时正好补住那一条，看不到边。 */
-#pwaFill{
-  position:fixed;left:0;top:0;right:0;height:0;
-  background:#141210;
-  z-index:0;pointer-events:none;
-}
-html,body{background:#141210}
+
 
 /* 顶栏 */
 #topbar{
