@@ -1,5 +1,6 @@
-const CACHE = 'ts-v1';
+const CACHE = 'ts-v2';
 const ASSETS = [
+  './trends.js',
   './', './index.html', './style.css', './style2.css',
   './store.js', './prompts.js', './api.js', './engine.js', './app.js',
   './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'
