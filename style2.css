@@ -58,3 +58,8 @@ button:active{filter:brightness(.94)}
 #stage{overscroll-behavior:contain}
 
 #dock.empty{display:none}
+
+/* 弹层显隐：不依赖 [hidden] 属性，避免被其它 display 规则覆盖 */
+.sheet-mask.hide{display:none !important}
+.sheet-mask{display:flex}
+#dock.empty{display:none !important}
