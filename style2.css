@@ -76,3 +76,11 @@ button:active{filter:brightness(.94)}
 .opt-hook{font-size:13px;line-height:1.7;margin-top:4px;color:#3d3630}
 .opt-set{font-size:12px;color:var(--sub);line-height:1.6;margin-top:4px}
 .opt-more{margin-top:8px}
+
+/* 手动编辑：大字编辑框 */
+.manual-editor{
+  width:100%;min-height:60vh;line-height:1.9;font-size:15px;
+  border:1px solid #f3c9bb;border-radius:12px;padding:12px;background:#fffdfc;
+  resize:vertical;
+}
+.manual-editor:focus{outline:2px solid #f6cdbf;border-color:var(--accent)}
