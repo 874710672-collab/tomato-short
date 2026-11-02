@@ -1263,25 +1263,53 @@
     download('短篇工坊备份-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(data, null, 2), 'application/json');
   }
   function importBackup() {
-    const inp = el('input'); inp.type = 'file'; inp.accept = '.json,application/json';
+    // iOS 上必须把 input 挂进文档，否则 .click() 静默失效
+    const inp = el('input');
+    inp.type = 'file';
+    inp.accept = '.json,application/json,.txt';
+    inp.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0';
+    document.body.appendChild(inp);
     inp.onchange = () => {
-      const f = inp.files[0]; if (!f) return;
+      const f = inp.files && inp.files[0];
+      if (!f) { inp.remove(); return; }
       const r = new FileReader();
       r.onload = () => {
-        try {
-          const d = JSON.parse(r.result);
-          const arr = d.projects || d;
-          if (!Array.isArray(arr)) throw new Error('格式不对');
-          const exist = new Set(Store.projects().map(x => x.id));
-          let n = 0;
-          arr.forEach(p => { if (!exist.has(p.id)) { Store.save(p); n++; } });
-          toast('导入 ' + n + ' 个项目'); render();
-        } catch (e) { toast('导入失败：' + e.message); }
+        try { applyBackup(String(r.result)); }
+        catch (e) { toast('导入失败：' + e.message); }
+        inp.remove();
       };
-      r.readAsText(f);
+      r.onerror = () => { toast('读取文件失败，换一个文件试试'); inp.remove(); };
+      r.readAsText(f, 'utf-8');
     };
     inp.click();
+    setTimeout(() => { if (inp.parentNode) inp.remove(); }, 120000);
   }
+
+  /* 解析并合并备份：新增项目、跳过重名的、可选覆盖 */
+  function applyBackup(text) {
+    let d;
+    try { d = JSON.parse(text); } catch (e) { throw new Error('不是有效的 JSON 文件'); }
+    const arr = Array.isArray(d) ? d : (d.projects || []);
+    if (!Array.isArray(arr) || !arr.length) throw new Error('文件里没有项目数据');
+    const good = arr.filter(p => p && p.id && p.steps);
+    if (!good.length) throw new Error('数据格式不认识（可能不是本 App 的备份）');
+    const existing = Store.projects();
+    const byId = new Map(existing.map(p => [p.id, p]));
+    let added = 0, replaced = 0, dup = 0;
+    good.forEach(p => {
+      const e = byId.get(p.id);
+      if (!e) { Store.save(p); added++; }
+      else if ((p.updatedAt || 0) > (e.updatedAt || 0)) { Store.save(p); replaced++; }
+      else dup++;
+    });
+    if (!added && !replaced) {
+      toast('没有新内容：备份里的 ' + dup + ' 个项目本地都有，且不比本地新');
+      return;
+    }
+    toast('导入完成：新增 ' + added + ' 个' + (replaced ? '，更新 ' + replaced + ' 个' : '') + (dup ? '，跳过 ' + dup + ' 个重复' : ''));
+    render();
+  }
+
 
   function download(name, text, mime) {
     const blob = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' });
