@@ -22,8 +22,20 @@ body{
 button{font-family:inherit;font-size:14px;cursor:pointer;border:none;background:none;color:inherit}
 input,textarea,select{font-family:inherit;font-size:15px;color:inherit}
 
+
+/* iOS 26/27 主屏 PWA：顶部实色兜底垫（消除 Liquid Glass 采样模糊）。
+   放在最底层，从状态栏一直铺到步骤条下沿；无 cover 时它被裁到可视区外，
+   有 cover 时正好补住那一条，看不到边。 */
+#pwaFill{
+  position:fixed;left:0;top:0;right:0;height:0;
+  background:#141210;
+  z-index:0;pointer-events:none;
+}
+html,body{background:#141210}
+
 /* 顶栏 */
 #topbar{
+  position:relative;z-index:5;
   flex:0 0 auto;height:56px;background:#141210;color:#fff;
   display:flex;align-items:center;justify-content:space-between;padding:0 12px;gap:8px;
 }
@@ -46,6 +58,7 @@ input,textarea,select{font-family:inherit;font-size:15px;color:inherit}
 /* 步骤条 */
 #steps[hidden]{display:none !important}
 #steps{
+  position:relative;z-index:4;
   flex:0 0 auto;display:flex;gap:6px;padding:10px 12px;overflow-x:auto;
   background:#fff;border-bottom:1px solid var(--line);
 }
