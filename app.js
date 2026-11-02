@@ -140,14 +140,15 @@
     els.bGen.hidden = !!busy;
     if (cur) {
       const has = cur.steps[cur.step].status !== 'idle';
+      const fbNow = ((cur.steps[cur.step] || {}).feedback || '').trim();
       els.bGen.textContent = cur.step === 'draft'
-        ? ((cur.steps.draft.parts && cur.steps.draft.parts[cur.steps.draft.partIdx || 0]) ? '重写本节' : '写这一节')
-        : (has ? '再生成一版' : '生成');
+        ? ((cur.steps.draft.parts && cur.steps.draft.parts[cur.steps.draft.partIdx || 0]) ? (fbNow ? '按意见重写本节' : '重写本节') : '写这一节')
+        : (has ? (fbNow ? '按意见改一版' : '再抽一版') : '生成');
+      els.bRegen.hidden = !!busy || !has || cur.step === 'draft';
       els.bApprove.textContent = cur.step === 'polish' ? '定稿 · 完成'
         : cur.step === 'draft' ? '正文写完 · 进入润色'
         : '通过 · 进入下一环节';
     }
-    els.bRegen.hidden = !!busy || (!has && cur.step !== 'draft');
     els.bApprove.hidden = !!busy || !s || !s.status || s.status === 'idle';
     els.bApprove.textContent = cur && cur.step === 'polish' ? '定稿 · 完成' : '通过 · 进入下一环节';
     if (busy) {
@@ -531,7 +532,7 @@
       row.appendChild(b);
     });
     c.appendChild(row);
-    c.appendChild(el('div', 'hint', '意见会带上现有稿件一起发给 AI，生成新一版。可以反复改。'));
+    c.appendChild(el('div', 'hint', '写完意见，点右下角「按意见改一版」——AI 会带着现有稿件和你的意见重写。不写意见直接点，就是换个角度再抽一版。'));
     return c;
   }
 
@@ -654,15 +655,22 @@
     render();
   }
 
-  async function doGen(k, extraFeedback) {
+  async function doGen(k, opts) {
     if (busy) return;
     if (!Store.cfg().apiKey) { openSettings(); toast('先填 API Key'); return; }
     flushEdits();
+    opts = opts || {};
     const s = cur.steps[k];
     const cards = Math.max(1, Math.min(4, Store.cfg().cards || 1));
+    // 有旧稿就存进历史，方便退回
+    const old = Engine.cur(cur, k);
+    if (old && opts.keepHistory !== false) {
+      s.history = s.history || [];
+      s.history.unshift({ text: old, at: Date.now() });
+      if (s.history.length > 8) s.history.length = 8;
+    }
     setBusy('正在生成' + STEP_NAME[k], k);
     const fbSave = s.feedback;
-    if (extraFeedback) s.feedback = extraFeedback;
     try {
       for (let i = 0; i < cards; i++) {
         if (busy.ctrl.signal.aborted) throw new Error('已停止');
@@ -696,14 +704,14 @@
     const k = cur.step;
     if (k === 'draft') return doDraftPart(cur.steps.draft.partIdx || 0, true);
     const s = cur.steps[k];
-    const old = Engine.cur(cur, k);
     const fb = (s.feedback || '').trim();
+    const old = Engine.cur(cur, k);
     if (old && !fb) {
-      if (!confirm('这次没有写审核意见，AI 会重新独立生成一版。继续？')) return;
+      if (!confirm('没有写审核意见。\n\n确定 = 直接再抽一版（AI 会换角度重写）\n取消 = 回去先写意见')) return;
     }
-    if (old) { s.history = s.history || []; s.history.unshift({ text: old, at: Date.now() }); if (s.history.length > 8) s.history.length = 8; }
-    await doGen(k, fb ? undefined : '（请在上一版基础上写得更好，但不要重复上一版的表达）');
+    await doGen(k);
   }
+
 
   async function doDraftPart(idx, withFeedback) {
     if (busy) return;
