@@ -101,3 +101,12 @@ button:active{filter:brightness(.94)}
 .trend-dl dd{margin:0;line-height:1.7}
 .trend-foot{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
 .trend-foot .src{flex:1;min-width:0;font-size:11px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 方向诊断 */
+.fit-card{border-color:#e9d8c8;background:linear-gradient(180deg,#fffdfa,#fff)}
+.fit-body{display:flex;flex-direction:column;gap:14px}
+.fit-sec{padding-left:10px;border-left:3px solid #f0d6c6}
+.fit-h{font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:6px;letter-spacing:.5px}
+.fit-li{font-size:13px;line-height:1.8;color:#3d3630;padding:2px 0}
+.fit-li + .fit-li{border-top:1px dashed #f3ece5}
+.sheet .fit-body{max-height:60vh;overflow:auto;margin-bottom:4px}
