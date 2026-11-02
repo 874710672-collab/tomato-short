@@ -79,7 +79,7 @@
     if (step === 'topic') {
       user = PROMPTS.fill(P.topic, { brief, tier: t.name, words: t.words, parts: t.parts, feedback: fb });
     } else if (step === 'setting') {
-      user = PROMPTS.fill(P.setting, { topic: cur(p, 'topic'), brief, tier: t.name, words: t.words, parts: t.parts, feedback: fb });
+      user = PROMPTS.fill(P.setting, { topic: window.pickedTopic ? window.pickedTopic() : cur(p, 'topic'), brief, tier: t.name, words: t.words, parts: t.parts, feedback: fb });
     } else if (step === 'outline') {
       user = PROMPTS.fill(P.outline, { topic: cur(p, 'topic'), setting: cur(p, 'setting'), brief, tier: t.name, words: t.words, parts: t.parts, feedback: fb });
     } else if (step === 'polish') {
