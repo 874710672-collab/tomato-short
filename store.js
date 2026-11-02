@@ -31,11 +31,18 @@
     get(id) { return this.projects().find(p => p.id === id) || null; },
     current() { return this.get(this.currentId()); },
     save(p) {
-      const list = this.projects();
       p.updatedAt = Date.now();
+      // 直接改存储里的那条，不再整体覆盖（避免把别处刚改的字段冲掉）
+      const list = this.projects();
       const i = list.findIndex(x => x.id === p.id);
-      if (i >= 0) list[i] = p; else list.unshift(p);
+      const prev = i >= 0 ? list[i] : {};
+      const merged = Object.assign({}, prev, p);
+      if (i >= 0) list[i] = merged; else list.unshift(merged);
       const ok = saveJSON(K_PROJ, list);
+      if (ok) {
+        // 用存好的那份回写内存对象，保持两边一致
+        for (const key in merged) p[key] = merged[key];
+      }
       return ok;
     },
     remove(id) {
