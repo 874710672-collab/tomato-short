@@ -3,7 +3,6 @@
   --txt:#1d1a17; --sub:#7a736a; --accent:#e8552f; --accent2:#b8401f;
   --ok:#2f8f5b; --warn:#c98500;
   color-scheme: light;
-  --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -20,7 +19,7 @@ input,textarea,select{font-family:inherit;font-size:15px;color:inherit}
 
 /* 顶栏 */
 #topbar{
-  flex:0 0 auto;height:calc(56px + var(--safe-t));padding-top:var(--safe-t);background:#141210;color:#fff;
+  flex:0 0 auto;height:56px;background:#141210;color:#fff;
   display:flex;align-items:center;justify-content:space-between;padding:0 12px;gap:8px;
 }
 .tb-left{display:flex;align-items:center;gap:10px;min-width:0}
