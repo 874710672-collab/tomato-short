@@ -56,3 +56,5 @@ button{transition:transform .08s ease, filter .12s ease}
 button:active{filter:brightness(.94)}
 .primary-btn:active,.ghost-btn:active{transform:scale(.97)}
 #stage{overscroll-behavior:contain}
+
+#dock.empty{display:none}
