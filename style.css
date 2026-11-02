@@ -8,6 +8,11 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none !important}
 html,body{margin:0;height:100%}
+/* iOS 26/27 Liquid Glass：给 html 上实色，让系统采样到实色而不是页面内容，避免顶栏叠出模糊 */
+html{
+  background:#141210;
+  background-color:#141210;
+}
 body{
   font-family:-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif;
   background:var(--bg);color:var(--txt);
