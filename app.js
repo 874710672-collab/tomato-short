@@ -349,7 +349,7 @@
       const cb = el('button', 'mini', '组合创意');
       cb.onclick = doCombo;
       const db = el('button', 'mini', '方向诊断');
-      db.onclick = doFit;
+      db.onclick = () => doFit('topic');
       bar.appendChild(tb); bar.appendChild(cb); bar.appendChild(db);
       left.appendChild(bar);
     }
@@ -369,6 +369,11 @@
       const b2 = el('button', 'mini', '复制');
       b2.onclick = () => copy(text);
       ea.appendChild(b1); ea.appendChild(b2);
+      if (k !== 'topic') {
+        const b3 = el('button', 'mini fit-btn', '✧ AI 诊断');
+        b3.onclick = () => doFit(k);
+        ea.appendChild(b3);
+      }
       box.appendChild(ea);
       box.appendChild(el('div', 'words', '共 ' + Engine.countWords(text) + ' 字'));
     }
@@ -383,13 +388,15 @@
   /* 右侧栏内容：方案卡 / 字数分配 / 审核意见 / 历史 */
   function fillRight(root, k, text) {
     const s = cur.steps[k];
-    if (k === 'topic' && cur.fit) {
+    const fit = fitOf(k);
+    if (fit) {
+      const meta = FIT_MAP[k] || { label: '诊断', prefix: '按诊断结果修改' };
       const fc = el('div', 'card fit-card');
-      const fh = el('h3', '', '方向诊断');
-      fh.appendChild(el('span', 'tag', fmtTime(cur.fit.at)));
+      const fh = el('h3', '', meta.label);
+      fh.appendChild(el('span', 'tag', fmtTime(fit.at)));
       fc.appendChild(fh);
       const fb = el('div', 'fit-body');
-      parseFit(cur.fit.text).forEach(b => {
+      parseFit(fit.text).forEach(b => {
         const sec = el('div', 'fit-sec');
         sec.appendChild(el('div', 'fit-h', b.title));
         b.lines.forEach(l => sec.appendChild(el('div', 'fit-li', l)));
@@ -398,15 +405,17 @@
       fc.appendChild(fb);
       const ops = el('div', 'doc-ops');
       const o1 = el('button', 'mini', '展开');
-      o1.onclick = openFitSheet;
+      o1.onclick = () => openFitSheet(k);
       const o2 = el('button', 'mini', '写进审核意见');
       o2.onclick = () => {
-        s.feedback = (s.feedback ? s.feedback + '\n' : '') + '按诊断结果调整方向：\n' + cur.fit.text;
+        s.feedback = (s.feedback ? s.feedback + '\n' : '') + meta.prefix + '：\n' + fit.text;
         persist(); render(); toast('已写进审核意见');
       };
-      const o3 = el('button', 'mini danger', '清除');
-      o3.onclick = () => { cur.fit = null; persist(); render(); };
-      ops.appendChild(o1); ops.appendChild(o2); ops.appendChild(o3);
+      const o3 = el('button', 'mini', '重新诊断');
+      o3.onclick = () => doFit(k);
+      const o4 = el('button', 'mini danger', '清除');
+      o4.onclick = () => { delete cur.fits[k]; persist(); render(); };
+      ops.appendChild(o1); ops.appendChild(o2); ops.appendChild(o3); ops.appendChild(o4);
       fc.appendChild(ops);
       root.appendChild(fc);
     }
@@ -620,7 +629,9 @@
     nextp.onclick = () => { if (idx < total - 1) { flushEdits(); d.partIdx = idx + 1; persist(); render(); } };
     const prevp = el('button', 'mini', '上一节');
     prevp.onclick = () => { if (idx > 0) { flushEdits(); d.partIdx = idx - 1; persist(); render(); } };
-    ops.appendChild(prevp); ops.appendChild(nextp); ops.appendChild(rewrite); ops.appendChild(regenOne);
+    const diag = el('button', 'mini fit-btn', '✧ AI 诊断本节');
+    diag.onclick = () => doFit('draft');
+    ops.appendChild(prevp); ops.appendChild(nextp); ops.appendChild(rewrite); ops.appendChild(regenOne); ops.appendChild(diag);
     card.appendChild(ops);
     left.appendChild(card);
     app.streamEl = card.querySelector('.doc');
@@ -845,36 +856,82 @@
   }
 
   /* 方向命中判断：评估现有想法 */
-  async function doFit() {
+  /* 各环节的诊断提示词与上下文 */
+  const FIT_MAP = {
+    topic: { key: 'trendFit', label: '方向诊断', prefix: '按诊断结果调整方向' },
+    setting: { key: 'fitSetting', label: '设定诊断', prefix: '按诊断结果修改设定' },
+    outline: { key: 'fitOutline', label: '大纲诊断', prefix: '按诊断结果修改大纲' },
+    draft: { key: 'fitDraft', label: '本节诊断', prefix: '按诊断结果修改本节' },
+    polish: { key: 'fitPolish', label: '定稿体检', prefix: '按诊断结果修改定稿' }
+  };
+
+  function fitOf(k) { return (cur && cur.fits && cur.fits[k]) || null; }
+
+  function buildFitVars(k) {
+    const t = Engine.tierInfo(cur);
+    const base = { brief: Engine.briefText(cur.brief) || '（简报为空）', tier: t.name, words: t.words, parts: t.parts, feedback: '' };
+    if (k === 'topic') {
+      const cards = TRENDS.all();
+      const ids = cur.trends || [];
+      const picked = ids.length ? cards.filter(c => ids.includes(c.id)) : cards;
+      return Object.assign(base, {
+        topic: Engine.cur(cur, 'topic').slice(0, 3000) || '（还没有选题稿）',
+        trends: TRENDS.brief(picked),
+        feedback: (cur.steps.topic.feedback || '').trim() ? '作者补充：' + cur.steps.topic.feedback : ''
+      });
+    }
+    return Object.assign(base, {
+      doc: Engine.cur(cur, k).slice(0, 8000),
+      topic: window.pickedTopic ? window.pickedTopic() : Engine.cur(cur, 'topic'),
+      setting: Engine.cur(cur, 'setting'),
+      outline: Engine.cur(cur, 'outline'),
+      feedback: (cur.steps[k].feedback || '').trim() ? '作者补充：' + cur.steps[k].feedback : ''
+    });
+  }
+
+  async function doFit(stepKey) {
     if (busy || !cur) return;
     if (!Store.cfg().apiKey) { openSettings(); toast('先填 API Key'); return; }
+    const k = stepKey || cur.step;
+    const meta = FIT_MAP[k];
+    if (!meta) return;
     flushEdits();
+    if (k !== 'topic' && !Engine.cur(cur, k) && !(k === 'draft' && (cur.steps.draft.parts || []).length)) {
+      toast('还没有稿子，先生成一版'); return;
+    }
     const P = PROMPTS.get();
-    const cards = TRENDS.all();
-    const ids = cur.trends || [];
-    const picked = ids.length ? cards.filter(c => ids.includes(c.id)) : cards;
-    setBusy('正在诊断方向', 'topic');
+    // 正文按当前节诊断
+    let vars = buildFitVars(k);
+    if (k === 'draft') {
+      const d = cur.steps.draft;
+      const idx = d.partIdx || 0;
+      const part = (d.parts || [])[idx];
+      vars.doc = part ? (part.title + '\n' + part.body).slice(0, 8000) : '';
+      meta.label = '第' + (idx + 1) + '节诊断';
+    }
+    setBusy('正在' + meta.label.replace('诊断', '诊断') + '…', k === 'draft' ? 'draft' : k);
     try {
       const out = await API.chat({
-        messages: API.buildMessages(P.system, PROMPTS.fill(P.trendFit, {
-          brief: Engine.briefText(cur.brief) || '（简报是空的，只能凭选题稿判断）',
-          topic: Engine.cur(cur, 'topic').slice(0, 3000) || '（还没有选题稿）',
-          trends: TRENDS.brief(picked),
-          feedback: (cur.steps.topic.feedback || '').trim() ? '作者补充：' + cur.steps.topic.feedback : ''
-        })),
+        messages: API.buildMessages(P.system, PROMPTS.fill(P[meta.key], vars)),
         onDelta: (d, full) => { busy.text = full; },
         signal: busy.ctrl.signal
       });
-      cur.fit = { text: out.trim(), at: Date.now() };
+      cur.fits = cur.fits || {};
+      cur.fits[k] = { text: out.trim(), at: Date.now() };
       endBusy();
-      openFitSheet();
+      openFitSheet(k);
     } catch (e) { endBusy(e); }
   }
 
-  function openFitSheet() {
-    if (!cur || !cur.fit) { toast('还没有诊断结果'); return; }
-    const blocks = parseFit(cur.fit.text);
-    let html = '<h2>方向诊断 <button class="close">✕</button></h2>';
+
+
+  function openFitSheet(stepKey) {
+    const k = stepKey || cur.step;
+    const fit = fitOf(k);
+    if (!fit) { toast('还没有诊断结果'); return; }
+    const meta = FIT_MAP[k] || { label: '诊断', prefix: '按诊断结果修改' };
+    const blocks = parseFit(fit.text);
+    let html = '<h2>' + meta.label + ' <button class="close">✕</button></h2>';
     html += '<div class="fit-body">';
     blocks.forEach(b => {
       html += '<div class="fit-sec"><div class="fit-h">' + esc(b.title) + '</div>';
@@ -887,15 +944,16 @@
       '<button class="ghost-btn" id="fitToFb">写进审核意见</button>' +
       '<button class="primary-btn" id="fitAgain">重新诊断</button></div>';
     sheet(html, (body) => {
-      $('#fitCopy', body).onclick = () => { copy(cur.fit.text); toast('已复制'); };
+      $('#fitCopy', body).onclick = () => { copy(fit.text); toast('已复制'); };
       $('#fitToFb', body).onclick = () => {
-        const s = cur.steps.topic;
-        s.feedback = (s.feedback ? s.feedback + '\n' : '') + '按诊断结果调整方向：\n' + cur.fit.text;
+        const s2 = cur.steps[k];
+        s2.feedback = (s2.feedback ? s2.feedback + '\n' : '') + meta.prefix + '：\n' + fit.text;
         persist(); closeSheet(); render(); toast('已写进审核意见');
       };
-      $('#fitAgain', body).onclick = () => { closeSheet(); doFit(); };
+      $('#fitAgain', body).onclick = () => { closeSheet(); doFit(k); };
     });
   }
+
 
   function parseFit(t) {
     const out = [];
@@ -1449,8 +1507,10 @@
     pc.appendChild(el('h3', '', '提示词'));
     pc.appendChild(el('div', 'hint', '每个工序的提示词都可以改。{{topic}} 这类占位符会被自动替换成上一步的成果。'));
     const P = PROMPTS.get();
-    const keys = ['system', 'topic', 'setting', 'outline', 'draft', 'polish'];
-    const names = { system: '系统提示（全局）', topic: '① 选题', setting: '② 设定人设', outline: '③ 分节大纲', draft: '④ 逐节正文', polish: '⑤ 润色成稿' };
+    const keys = ['system', 'topic', 'setting', 'outline', 'draft', 'polish', 'trendFit', 'fitSetting', 'fitOutline', 'fitDraft', 'fitPolish', 'trendExtract', 'trendSuggest'];
+    const names = { system: '系统提示（全局）', topic: '① 选题', setting: '② 设定人设', outline: '③ 分节大纲', draft: '④ 逐节正文', polish: '⑤ 润色成稿',
+      trendFit: '诊断 · 选题方向', fitSetting: '诊断 · 设定', fitOutline: '诊断 · 大纲', fitDraft: '诊断 · 正文', fitPolish: '诊断 · 定稿',
+      trendExtract: '热门方向 · 拆解文章', trendSuggest: '热门方向 · 组合创意' };
     keys.forEach(k => {
       const acc = el('div', 'acc');
       const hd = el('button', 'acc-hd');
