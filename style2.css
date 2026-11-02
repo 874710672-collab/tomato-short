@@ -1,0 +1,58 @@
+/* ---- 补充样式 ---- */
+.brief-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.brief-head h3{margin:0;font-size:15px}
+.brief-body{padding-top:2px}
+.tier-row{display:flex;gap:8px;flex-wrap:wrap}
+.tier-btn{
+  flex:1 1 150px;display:flex;flex-direction:column;gap:3px;align-items:flex-start;
+  padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:#fff;text-align:left;
+}
+.tier-btn b{font-size:14px}
+.tier-btn span{font-size:11px;color:var(--sub)}
+.tier-btn.on{border-color:var(--accent);background:#fff4f0}
+.tier-btn.on b{color:var(--accent2)}
+
+.doc-ops{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.review-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.review-row .mini{background:#fff;border-color:#eccfc4;color:#a05a3c}
+.sheet-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.plan-row{display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px dashed #efe9e0;font-size:13px}
+.plan-row .pn{width:20px;height:20px;border-radius:6px;background:var(--panel2);display:grid;place-items:center;font-size:11px;color:var(--sub);flex:0 0 auto}
+.plan-row .ptt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plan-row .pw{font-size:11px;color:var(--sub)}
+.hist-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--sub);padding:6px 0;border-bottom:1px dashed #efe9e0}
+.hist-row:last-child{border:none}
+
+.home-top{display:flex;gap:8px;margin-bottom:14px}
+.plist{}
+.pitem{}
+.mini.danger{color:#c02a17;border-color:#f2c8bf}
+.empty-home{text-align:center}
+.empty-home h3{justify-content:center}
+.empty-home .hint{color:var(--sub);font-size:13px;line-height:1.7;margin-bottom:12px}
+.hint{font-size:12px;color:var(--sub);line-height:1.6}
+
+.switch-row{display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 2px}
+.switch-row input{width:18px;height:18px;accent-color:var(--accent)}
+.ok-box{color:var(--ok);background:#eef8f1;border:1px solid #cbe8d5;padding:10px 12px;border-radius:10px;font-size:13px}
+
+.acc{border-bottom:1px solid var(--line);padding:6px 0}
+.acc:last-child{border:none}
+.acc-hd{width:100%;display:flex;justify-content:space-between;align-items:center;padding:8px 2px;font-size:14px;color:var(--txt)}
+.acc textarea{margin:6px 0;width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 11px;line-height:1.6;font-size:13px}
+.pad{height:40px}
+.primary-btn.wide{width:100%}
+
+/* 阅读视图（导出预览用） */
+@media (max-width:819px){
+  .split{display:block}
+}
+
+.brief-title{display:flex;align-items:center;gap:10px;flex:1;min-width:0;flex-wrap:wrap}
+.brief-title h3{flex:0 0 auto;white-space:nowrap}
+.title-in{flex:1 1 160px;min-width:0;border:none;border-bottom:1px dashed var(--line);border-radius:0;padding:5px 2px;font-size:14px;background:transparent}
+.title-in:focus{outline:none;border-bottom-color:var(--accent)}
+button{transition:transform .08s ease, filter .12s ease}
+button:active{filter:brightness(.94)}
+.primary-btn:active,.ghost-btn:active{transform:scale(.97)}
+#stage{overscroll-behavior:contain}
