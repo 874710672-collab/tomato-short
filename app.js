@@ -340,7 +340,9 @@
       tb.onclick = openTrends;
       const cb = el('button', 'mini', '组合创意');
       cb.onclick = doCombo;
-      bar.appendChild(tb); bar.appendChild(cb);
+      const db = el('button', 'mini', '方向诊断');
+      db.onclick = doFit;
+      bar.appendChild(tb); bar.appendChild(cb); bar.appendChild(db);
       left.appendChild(bar);
     }
 
@@ -373,6 +375,33 @@
   /* 右侧栏内容：方案卡 / 字数分配 / 审核意见 / 历史 */
   function fillRight(root, k, text) {
     const s = cur.steps[k];
+    if (k === 'topic' && cur.fit) {
+      const fc = el('div', 'card fit-card');
+      const fh = el('h3', '', '方向诊断');
+      fh.appendChild(el('span', 'tag', fmtTime(cur.fit.at)));
+      fc.appendChild(fh);
+      const fb = el('div', 'fit-body');
+      parseFit(cur.fit.text).forEach(b => {
+        const sec = el('div', 'fit-sec');
+        sec.appendChild(el('div', 'fit-h', b.title));
+        b.lines.forEach(l => sec.appendChild(el('div', 'fit-li', l)));
+        fb.appendChild(sec);
+      });
+      fc.appendChild(fb);
+      const ops = el('div', 'doc-ops');
+      const o1 = el('button', 'mini', '展开');
+      o1.onclick = openFitSheet;
+      const o2 = el('button', 'mini', '写进审核意见');
+      o2.onclick = () => {
+        s.feedback = (s.feedback ? s.feedback + '\n' : '') + '按诊断结果调整方向：\n' + cur.fit.text;
+        persist(); render(); toast('已写进审核意见');
+      };
+      const o3 = el('button', 'mini danger', '清除');
+      o3.onclick = () => { cur.fit = null; persist(); render(); };
+      ops.appendChild(o1); ops.appendChild(o2); ops.appendChild(o3);
+      fc.appendChild(ops);
+      root.appendChild(fc);
+    }
     if (k === 'topic' && text && !(busy && busy.step === k)) renderTopicPicker(root, s, text);
     root.appendChild(reviewCard(k));
     if (k === 'outline') root.appendChild(planCard());
@@ -770,6 +799,78 @@
       s.feedback = '';
       endBusy();
     } catch (e) { endBusy(e); }
+  }
+
+  /* 方向命中判断：评估现有想法 */
+  async function doFit() {
+    if (busy || !cur) return;
+    if (!Store.cfg().apiKey) { openSettings(); toast('先填 API Key'); return; }
+    flushEdits();
+    const P = PROMPTS.get();
+    const cards = TRENDS.all();
+    const ids = cur.trends || [];
+    const picked = ids.length ? cards.filter(c => ids.includes(c.id)) : cards;
+    setBusy('正在诊断方向', 'topic');
+    try {
+      const out = await API.chat({
+        messages: API.buildMessages(P.system, PROMPTS.fill(P.trendFit, {
+          brief: Engine.briefText(cur.brief) || '（简报是空的，只能凭选题稿判断）',
+          topic: Engine.cur(cur, 'topic').slice(0, 3000) || '（还没有选题稿）',
+          trends: TRENDS.brief(picked),
+          feedback: (cur.steps.topic.feedback || '').trim() ? '作者补充：' + cur.steps.topic.feedback : ''
+        })),
+        onDelta: (d, full) => { busy.text = full; },
+        signal: busy.ctrl.signal
+      });
+      cur.fit = { text: out.trim(), at: Date.now() };
+      endBusy();
+      openFitSheet();
+    } catch (e) { endBusy(e); }
+  }
+
+  function openFitSheet() {
+    if (!cur || !cur.fit) { toast('还没有诊断结果'); return; }
+    const blocks = parseFit(cur.fit.text);
+    let html = '<h2>方向诊断 <button class="close">✕</button></h2>';
+    html += '<div class="fit-body">';
+    blocks.forEach(b => {
+      html += '<div class="fit-sec"><div class="fit-h">' + esc(b.title) + '</div>';
+      b.lines.forEach(l => { html += '<div class="fit-li">' + esc(l) + '</div>'; });
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '<div class="sheet-acts">' +
+      '<button class="ghost-btn" id="fitCopy">复制全文</button>' +
+      '<button class="ghost-btn" id="fitToFb">写进审核意见</button>' +
+      '<button class="primary-btn" id="fitAgain">重新诊断</button></div>';
+    sheet(html, (body) => {
+      $('#fitCopy', body).onclick = () => { copy(cur.fit.text); toast('已复制'); };
+      $('#fitToFb', body).onclick = () => {
+        const s = cur.steps.topic;
+        s.feedback = (s.feedback ? s.feedback + '\n' : '') + '按诊断结果调整方向：\n' + cur.fit.text;
+        persist(); closeSheet(); render(); toast('已写进审核意见');
+      };
+      $('#fitAgain', body).onclick = () => { closeSheet(); doFit(); };
+    });
+  }
+
+  function parseFit(t) {
+    const out = [];
+    let curSec = null;
+    String(t).split('\n').forEach(raw => {
+      const line = raw.trim();
+      if (!line) return;
+      const m = line.match(/^【(.+?)】\s*(.*)$/);
+      if (m) {
+        curSec = { title: m[1], lines: [] };
+        if (m[2]) curSec.lines.push(m[2]);
+        out.push(curSec);
+      } else if (curSec) {
+        curSec.lines.push(line.replace(/^[-•·]\s*/, ''));
+      }
+    });
+    if (!out.length) out.push({ title: '诊断', lines: String(t).split('\n').map(x => x.trim()).filter(Boolean) });
+    return out;
   }
 
   function doApprove() {
