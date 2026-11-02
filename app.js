@@ -10,7 +10,7 @@
   const stage = $('#stage');
   const els = {
     project: $('#tbProject'), sub: $('#tbSub'), steps: $('#steps'),
-    dockInfo: $('#dockInfo'), bGen: $('#btnGen'), bRegen: $('#btnRegen'),
+    dockInfo: $('#dockInfo'), bGen: $('#btnGen'), bRegen: $('#btnRegen'), bRevise: $('#btnRevise'),
     bApprove: $('#btnApprove'), bStop: $('#btnStop')
   };
 
@@ -135,33 +135,40 @@
   }
 
   function updateDock() {
-    const has = !!(cur && Engine.cur(cur, cur.step)) || !!(cur && cur.step === 'draft' && (cur.steps.draft.parts || []).length);
-    const s = cur && cur.steps[cur.step];
-    els.bGen.hidden = !!busy;
-    if (cur) {
-      const has = cur.steps[cur.step].status !== 'idle';
-      const fbNow = ((cur.steps[cur.step] || {}).feedback || '').trim();
-      els.bGen.textContent = cur.step === 'draft'
-        ? ((cur.steps.draft.parts && cur.steps.draft.parts[cur.steps.draft.partIdx || 0]) ? (fbNow ? '按意见重写本节' : '重写本节') : '写这一节')
-        : (has ? (fbNow ? '按意见改一版' : '再抽一版') : '生成');
-      els.bRegen.hidden = !!busy || !has || cur.step === 'draft';
-      els.bApprove.textContent = cur.step === 'polish' ? '定稿 · 完成'
-        : cur.step === 'draft' ? '正文写完 · 进入润色'
-        : '通过 · 进入下一环节';
-    }
-    els.bApprove.hidden = !!busy || !s || !s.status || s.status === 'idle';
-    els.bApprove.textContent = cur && cur.step === 'polish' ? '定稿 · 完成' : '通过 · 进入下一环节';
-    if (busy) {
+    if (!cur) { ['bRevise','bRegen','bGen','bApprove'].forEach(k => els[k].hidden = true); return; }
+    const k = cur.step;
+    const s = cur.steps[k];
+    const has = k === 'draft'
+      ? !!(s.parts && s.parts[s.partIdx || 0])
+      : !!(s.status && s.status !== 'idle' && Engine.cur(cur, k));
+    const fb = (s.feedback || '').trim();
+    const busyNow = !!busy;
+
+    els.bGen.hidden = busyNow || has;
+    els.bRevise.hidden = busyNow || !has;
+    els.bRegen.hidden = busyNow || !has;
+    els.bApprove.hidden = busyNow || !has;
+
+    els.bRevise.textContent = k === 'draft' ? '✎ 按意见改本节' : '✎ 按意见改';
+    els.bRevise.disabled = !fb;
+    els.bRevise.title = fb ? '带上原稿 + 你的意见，只改意见提到的地方' : '先在右边写审核意见';
+    els.bRegen.textContent = k === 'draft' ? '↻ 重写本节' : '↻ 重新生成';
+    els.bGen.textContent = k === 'draft' ? '写这一节' : '生成';
+    els.bApprove.textContent = k === 'polish' ? '定稿 · 完成'
+      : k === 'draft' ? '正文写完 · 进入润色' : '通过 · 进入下一环节';
+
+    if (busyNow) {
       const n = Engine.countWords(busy.text || '');
       els.dockInfo.textContent = busy.label + ' · 已生成 ' + n + ' 字';
-    } else if (cur) {
-      const total = Engine.countWords(Engine.cur(cur, cur.step));
+    } else {
+      const total = Engine.countWords(k === 'draft' ? Engine.joinDraft(cur) : Engine.cur(cur, k));
       const t = Engine.tierInfo(cur);
-      els.dockInfo.textContent = s && s.status !== 'idle'
-        ? `目标 ${t.words} 字 · 当前 ${total} 字 · ${s.status === 'done' ? '已通过' : '待审核'}`
+      els.dockInfo.textContent = has
+        ? `目标 ${t.words} 字 · 当前 ${total} 字 · ${s.status === 'done' ? '已通过' : (fb ? '待按意见修改' : '待审核')}`
         : '填好左侧简报后点「生成」';
     }
   }
+
   /* ===== 简报 ===== */
   function renderBrief(root) {
     const c = el('div', 'card');
@@ -605,13 +612,15 @@
       card.appendChild(pre);
     }
     const ops = el('div', 'doc-ops');
-    const rewrite = el('button', 'mini', '带意见重写本节');
-    rewrite.onclick = () => doDraftPart(idx, true);
+    const rewrite = el('button', 'mini', '按意见改本节');
+    rewrite.onclick = () => doDraftPart(idx, { mode: 'revise' });
+    const regenOne = el('button', 'mini', '重写本节');
+    regenOne.onclick = () => doDraftPart(idx, { mode: 'fresh' });
     const nextp = el('button', 'mini', '下一节');
     nextp.onclick = () => { if (idx < total - 1) { flushEdits(); d.partIdx = idx + 1; persist(); render(); } };
     const prevp = el('button', 'mini', '上一节');
     prevp.onclick = () => { if (idx > 0) { flushEdits(); d.partIdx = idx - 1; persist(); render(); } };
-    ops.appendChild(prevp); ops.appendChild(nextp); ops.appendChild(rewrite);
+    ops.appendChild(prevp); ops.appendChild(nextp); ops.appendChild(rewrite); ops.appendChild(regenOne);
     card.appendChild(ops);
     left.appendChild(card);
     app.streamEl = card.querySelector('.doc');
@@ -656,12 +665,16 @@
   }
 
   async function doGen(k, opts) {
+    // opts.mode: 'fresh' 重新生成 | 'revise' 带原稿改
+
     if (busy) return;
     if (!Store.cfg().apiKey) { openSettings(); toast('先填 API Key'); return; }
     flushEdits();
     opts = opts || {};
     const s = cur.steps[k];
-    const cards = Math.max(1, Math.min(4, Store.cfg().cards || 1));
+    const mode = (opts && opts.mode) || 'fresh';
+    const cards = mode === 'revise' ? 1 : Math.max(1, Math.min(4, Store.cfg().cards || 1));
+    if (mode === 'revise' && !(s.feedback || '').trim()) { toast('先写审核意见'); return; }
     // 有旧稿就存进历史，方便退回
     const old = Engine.cur(cur, k);
     if (old && opts.keepHistory !== false) {
@@ -674,10 +687,11 @@
     try {
       for (let i = 0; i < cards; i++) {
         if (busy.ctrl.signal.aborted) throw new Error('已停止');
-        busy.label = cards > 1 ? `正在生成${STEP_NAME[k]}（${i + 1}/${cards}）` : '正在生成' + STEP_NAME[k];
+        busy.label = mode === 'revise' ? '正在按意见修改' + STEP_NAME[k] : '正在重新生成' + STEP_NAME[k];
         busy.text = '';
         app.streamEl && app.streamEl.textContent === '' ;
-        const out = await Engine.genStep(cur, k, (d, full) => {
+        const runner = mode === 'revise' ? Engine.reviseStep : Engine.genStep;
+        const out = await runner(cur, k, (d, full) => {
           busy.text = full;
           if (app.streamEl) app.streamEl.textContent = full;
           updateDock();
@@ -702,26 +716,36 @@
     if (!cur) return;
     flushEdits();
     const k = cur.step;
-    if (k === 'draft') return doDraftPart(cur.steps.draft.partIdx || 0, true);
+    if (k === 'draft') return doDraftPart(cur.steps.draft.partIdx || 0, { mode: 'fresh' });
     const s = cur.steps[k];
     const fb = (s.feedback || '').trim();
-    const old = Engine.cur(cur, k);
-    if (old && !fb) {
-      if (!confirm('没有写审核意见。\n\n确定 = 直接再抽一版（AI 会换角度重写）\n取消 = 回去先写意见')) return;
-    }
-    await doGen(k);
+    const msg = fb
+      ? '重新生成会**不带上一版原稿**，让 AI 从头写一版（你的意见仍会作为要求带上）。\n\n要这样吗？\n确定 = 重新生成\n取消 = 用「✎ 按意见改」在上一版上改'
+      : '没有写审核意见，会从头重新生成一版。继续？';
+    if (!confirm(msg)) return;
+    await doGen(k, { mode: 'fresh' });
+  }
+
+  async function doRevise() {
+    if (!cur) return;
+    flushEdits();
+    const k = cur.step;
+    if (k === 'draft') return doDraftPart(cur.steps.draft.partIdx || 0, { mode: 'revise' });
+    await doGen(k, { mode: 'revise' });
   }
 
 
-  async function doDraftPart(idx, withFeedback) {
+
+  async function doDraftPart(idx, opts) {
     if (busy) return;
     if (!Store.cfg().apiKey) { openSettings(); return; }
     flushEdits();
     const d = cur.steps.draft;
-    d.feedback = withFeedback ? d.feedback : '';
+    const mode = (opts && opts.mode) || 'fresh';
+    if (mode === 'revise' && !(d.feedback || '').trim()) { toast('先写审核意见'); return; }
     const old = d.parts[idx];
+    if (mode === 'revise' && !old) { toast('这一节还没写，先用「重写本节」'); return; }
     if (old) {
-      d.history = d.history || [];
       d.history = d.history || [];
       d.history.unshift({ text: old.title + '\n' + old.body, at: Date.now() });
       if (d.history.length > 12) d.history.length = 12;
@@ -729,13 +753,24 @@
     setBusy('正在写第' + (idx + 1) + '节', 'draft');
     busy.partIdx = idx;
     try {
-      const out = await Engine.genPart(cur, idx, (dd, full) => {
+      let out;
+      if (mode === 'revise') {
+        const P = PROMPTS.get();
+        const rule = PROMPTS.fill(Engine.REVISE_RULE, { prevText: old.title + '\n' + old.body, feedback: d.feedback });
+        const ctx = Engine.buildContext(cur, 'draft', Engine.tierInfo(cur));
+        out = await API.chat({
+          messages: API.buildMessages(P.system + '\n\n' + rule, ctx),
+          onDelta: (dd, full) => { busy.text = full; if (app.streamEl) app.streamEl.textContent = full; updateDock(); },
+          signal: busy.ctrl.signal
+        });
+      }
+      const out2 = mode === 'revise' ? out : await Engine.genPart(cur, idx, (dd, full) => {
         busy.text = full;
         if (app.streamEl) app.streamEl.textContent = full;
         updateDock();
       }, busy.ctrl.signal);
       const plan = Engine.outlinePlan(Engine.cur(cur, 'outline'));
-      d.parts[idx] = { title: (plan[idx] && plan[idx].title) || ('第' + (idx + 1) + '节'), body: out.trim() };
+      d.parts[idx] = { title: (plan[idx] && plan[idx].title) || ('第' + (idx + 1) + '节'), body: (mode === 'revise' ? out2 : out2).trim() };
       d.partIdx = idx;
       d.status = 'ready';
       d.feedback = '';
@@ -1440,83 +1475,16 @@
     stage.appendChild(el('div', 'pad'));
   }
   /* ===== 顶部与步骤条 ===== */
-  function renderTop() {
-    if (view === 'home') { els.project.textContent = '短篇工坊'; els.sub.textContent = '共 ' + Store.projects().length + ' 个项目'; return; }
-    if (view === 'settings') { els.project.textContent = '设置'; els.sub.textContent = '接口与提示词'; return; }
-    if (view === 'trends') { els.project.textContent = '热门方向库'; els.sub.textContent = cur ? ('已选 ' + ((cur.trends || []).length) + ' 个方向') : '先打开一个短篇再勾选'; return; }
-    if (!cur) { els.project.textContent = '短篇工坊'; els.sub.textContent = '还没有项目'; return; }
-    const t = Engine.tierInfo(cur);
-    els.project.textContent = cur.title;
-    els.sub.textContent = `${STEP_NAME[cur.step]} · 第${STEP_ORDER.indexOf(cur.step) + 1}/5 步 · ${t.name} 约${t.words}字`;
-  }
 
-  function stepState(p, k) {
-    const s = p.steps[k];
-    if (s.status === 'done') return 'ok';
-    if (s.status === 'ready') return 'ok';
-    return '';
-  }
 
-  function renderSteps() {
-    els.steps.innerHTML = '';
-    if (view !== 'project' || !cur) { els.steps.hidden = true; return; }
-    els.steps.hidden = false;
-    STEP_ORDER.forEach((k, i) => {
-      const c = el('button', 'step-chip ' + (cur.step === k ? 'cur ' : '') + stepState(cur, k));
-      c.appendChild(el('span', 'dot'));
-      c.appendChild(el('span', '', (i + 1) + ' ' + STEP_NAME[k]));
-      c.onclick = () => {
-        if (busy) { toast('正在生成，先等一下'); return; }
-        const target = STEP_ORDER.indexOf(k);
-        const curIdx = STEP_ORDER.indexOf(cur.step);
-        if (target > curIdx + 0 && cur.steps[cur.step].status !== 'done' && target !== curIdx) {
-          // 允许回看已完成的，往前跳需要当前步通过
-          if (target !== curIdx && !STEP_ORDER.slice(0, target).every(x => cur.steps[x].status === 'done')) {
-            if (!confirm('前面的环节还没通过，仍然要跳到「' + STEP_NAME[k] + '」吗？')) return;
-          }
-        }
-        flushEdits();
-        cur.step = k;
-        persist();
-        render();
-      };
-      els.steps.appendChild(c);
-    });
-  }
 
-  function render() {
-    flushEdits();
-    renderTop();
-    renderSteps();
-    $('#btnExport').hidden = !(view === 'project' && cur);
-    $('#btnSet').hidden = view === 'settings';
-    els.bStop.hidden = !busy;
-    if (view === 'home') { renderHome(); return; }
-    if (view === 'settings') { renderSettings(); return; }
-    if (view === 'trends') { renderTrends(); return; }
-    if (!cur) { renderEmpty(); return; }
-    const k = cur.step;
-    stage.innerHTML = '';
-    const wrap = el('div');
-    stage.appendChild(wrap);
-    renderBrief(wrap);
-    if (k === 'draft') renderDraft(wrap); else renderStepDoc(wrap, k);
-    updateDock();
-  }
+
+
+
+
 
   /* ===== 空状态 ===== */
-  function renderEmpty() {
-    stage.innerHTML = '';
-    const c = el('div', 'card empty-home');
-    c.appendChild(el('h3', '', '还没有打开任何项目'));
-    const b = el('button', 'primary-btn', '新建一个短篇');
-    b.onclick = () => {
-      const p = newProject();
-      Store.save(p); Store.setCurrent(p.id); cur = p; view = 'project'; render();
-    };
-    c.appendChild(b);
-    stage.appendChild(c);
-  }
+
 
   /* ===== 事件绑定 ===== */
   $('#btnHome').onclick = () => {
@@ -1532,6 +1500,7 @@
     else doGen(cur.step);
   };
   els.bRegen.onclick = doRegen;
+  els.bRevise.onclick = doRevise;
   els.bApprove.onclick = doApprove;
   els.bStop.onclick = () => {
     if (busy) { busy.ctrl.abort(); toast('已停止'); }
