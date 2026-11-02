@@ -35,13 +35,14 @@
     const s = $('#sheet');
     $('#sheetBody').innerHTML = html;
     s.hidden = false;
+    s.classList.remove('hide');
     lockScroll(true);
     const close = $('.close', $('#sheetBody'));
     if (close) close.onclick = () => closeSheet();
     s.onclick = (e) => { if (e.target === s) closeSheet(); };
     if (onMount) onMount($('#sheetBody'));
   }
-  function closeSheet() { $('#sheet').hidden = true; lockScroll(false); }
+  function closeSheet() { $('#sheet').hidden = true; $('#sheet').classList.add('hide'); lockScroll(false); }
   function fmtTime(ts) {
     const d = new Date(ts);
     const z = (n) => String(n).padStart(2, '0');
@@ -646,6 +647,7 @@
 
   /* 启动：确保弹层/遮罩/提示都处于关闭状态 */
   $('#sheet').hidden = true;
+  $('#sheet').classList.add('hide');
   $('#toast').hidden = true;
   lockScroll(false);
 
