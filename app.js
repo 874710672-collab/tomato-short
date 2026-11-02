@@ -231,6 +231,80 @@
     root.appendChild(c);
   }
 
+  /* ===== 选题：方案卡片（解析 AI 的三个方案，逐个选定） ===== */
+  function parseOptions(text) {
+    if (!text) return [];
+    // 以【标题】作为方案分隔点
+    const idx = [];
+    let m;
+    const re = /【标题】|标题[:：]\s*/g;
+    while ((m = re.exec(text))) idx.push(m.index);
+    if (idx.length < 1) return [];
+    const out = [];
+    idx.forEach((p, i) => {
+      const seg = text.slice(p, i + 1 < idx.length ? idx[i + 1] : text.length).trim();
+      out.push(seg);
+    });
+    return out.map(seg => {
+      const title = (seg.match(/【标题】\s*(.+)/) || [])[1] || '';
+      const tags = (seg.match(/【题材标签】\s*(.+)/) || [])[1] || '';
+      const hook = (seg.match(/【一句话钩子】\s*(.+)/) || [])[1] || '';
+      const setting = (seg.match(/【核心设定】\s*([\s\S]*?)(?=\n【|$)/) || [])[1] || '';
+      return { text: seg, title: title.trim(), tags: tags.trim(), hook: hook.trim(), setting: setting.trim().replace(/\s+/g, ' ') };
+    });
+  }
+
+  function renderTopicPicker(root, s, text) {
+    const opts = parseOptions(text);
+    const c = el('div', 'card');
+    const h = el('h3', '', '选题方案');
+    h.appendChild(el('span', 'tag', opts.length ? '共 ' + opts.length + ' 个 · 选一个再点「通过」' : ''));
+    c.appendChild(h);
+    if (!opts.length) {
+      c.appendChild(el('div', 'hint', '这一版没有按【标题】分条，可直接在下面手动编辑，或用意见让 AI 重写。'));
+      root.appendChild(c);
+      return;
+    }
+    const curSel = s.picked;
+    opts.forEach((o, i) => {
+      const card = el('div', 'opt-card' + (curSel === i ? ' on' : ''));
+      const top = el('div', 'opt-top');
+      top.appendChild(el('span', 'opt-idx', String(i + 1)));
+      top.appendChild(el('span', 'opt-title', o.title || '（无标题）'));
+      const pick = el('button', 'mini opt-pick' + (curSel === i ? ' on' : ''), curSel === i ? '✓ 已选' : '选这个');
+      pick.onclick = () => {
+        flushEdits();
+        s.picked = (s.picked === i ? null : i);
+        // 选定方案即作为后续环节的选题
+        s.versions[s.sel].picked = s.picked;
+        persist(); render();
+      };
+      top.appendChild(pick);
+      card.appendChild(top);
+      if (o.tags) card.appendChild(el('div', 'opt-tags', o.tags));
+      if (o.hook) card.appendChild(el('div', 'opt-hook', '钩子：' + o.hook));
+      if (o.setting) card.appendChild(el('div', 'opt-set', o.setting.slice(0, 120)));
+      const more = el('button', 'mini opt-more', '查看完整');
+      more.onclick = () => sheet('<h2>方案 ' + (i + 1) + ' <button class="close">✕</button></h2><div class="doc">' + esc(o.text) + '</div>');
+      card.appendChild(more);
+      c.appendChild(card);
+    });
+    root.appendChild(c);
+  }
+
+  function esc(t) {
+    return String(t).replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+  }
+
+  /* 取当前选定的方案作为下一环节的输入；没选就返回整版 */
+  function topicForNext() {
+    const s = cur.steps.topic;
+    const text = Engine.cur(cur, 'topic');
+    if (s.picked === null || s.picked === undefined) return text;
+    const opts = parseOptions(text);
+    return (opts[s.picked] && opts[s.picked].text) || text;
+  }
+
   /* ===== 通用工序（选题/设定/大纲/润色） ===== */
   function renderStepDoc(root, k) {
     const s = cur.steps[k];
@@ -275,6 +349,7 @@
     }
     left.appendChild(box);
 
+    if (k === 'topic' && text && !(busy && busy.step === k)) renderTopicPicker(right, s, text);
     right.appendChild(reviewCard(k));
     if (k === 'outline') right.appendChild(planCard());
     if (s.history && s.history.length) right.appendChild(historyCard(s));
@@ -500,6 +575,7 @@
         }, busy.ctrl.signal);
         s.versions.push({ text: out.trim(), at: Date.now() });
         s.sel = s.versions.length - 1;
+        if (k === 'topic') s.picked = null;
         s.status = 'ready';
         s.feedback = '';
         persist();
@@ -604,6 +680,15 @@
       s.sel = 0;
     }
     s.status = 'done';
+    if (k === 'topic') {
+      const opts = parseOptions(Engine.cur(cur, 'topic'));
+      if (opts.length && (s.picked === null || s.picked === undefined)) {
+        if (!confirm('还没选方案。直接通过的话，会把全部 ' + opts.length + ' 个方案一起交给下一步。\n\n要先去选一个吗？\n  确定 = 不选了，一起交给下一步\n  取消 = 回去选')) return;
+      }
+      if (opts.length && s.picked !== null && s.picked !== undefined && opts[s.picked] && opts[s.picked].title) {
+        if (cur.title === '未命名短篇' || !cur.title.trim()) cur.title = opts[s.picked].title;
+      }
+    }
     const i = STEP_ORDER.indexOf(k);
     if (i < STEP_ORDER.length - 1) cur.step = STEP_ORDER[i + 1];
     persist();
@@ -642,6 +727,8 @@
   els.bStop.onclick = () => {
     if (busy) { busy.ctrl.abort(); toast('已停止'); }
   };
+
+  window.pickedTopic = topicForNext;
 
   // 暴露给 Engine.autoDraft 的界面句柄
 
