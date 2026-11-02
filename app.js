@@ -114,7 +114,6 @@
 
   function render() {
     flushEdits();
-    setTimeout(layoutPwaFill, 0);
     renderTop();
     renderSteps();
     $('#btnExport').hidden = !(view === 'project' && cur);
@@ -1487,7 +1486,6 @@
 
   function render() {
     flushEdits();
-    setTimeout(layoutPwaFill, 0);
     renderTop();
     renderSteps();
     $('#btnExport').hidden = !(view === 'project' && cur);
@@ -1545,19 +1543,6 @@
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
-  /* 顶部实色垫：高度 = 顶栏 + 步骤条（项目页才有步骤条），再多铺 120px 兜住状态栏 */
-  function layoutPwaFill() {
-    const fill = document.getElementById('pwaFill');
-    if (!fill) return;
-    const tb = document.getElementById('topbar');
-    const st = document.getElementById('steps');
-    let h = (tb ? tb.offsetHeight : 56) + 120;
-    if (st && st.offsetParent !== null) h += st.offsetHeight;
-    fill.style.height = h + 'px';
-  }
-  window.addEventListener('resize', layoutPwaFill);
-  window.addEventListener('orientationchange', () => setTimeout(layoutPwaFill, 300));
 
   render();
-  layoutPwaFill();
 })();
