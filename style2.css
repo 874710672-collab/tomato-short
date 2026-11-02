@@ -84,3 +84,20 @@ button:active{filter:brightness(.94)}
   resize:vertical;
 }
 .manual-editor:focus{outline:2px solid #f6cdbf;border-color:var(--accent)}
+
+/* 选题工具条 */
+.topic-bar{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.topic-bar .mini.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* 热门方向卡 */
+.trend-card.on{border-color:var(--accent);box-shadow:0 0 0 2px #fbe0d6}
+.trend-top{display:flex;align-items:flex-start;gap:10px}
+.trend-top input{width:20px;height:20px;accent-color:var(--accent);margin-top:2px;flex:0 0 auto}
+.trend-name{font-size:15px;font-weight:600;line-height:1.5}
+.trend-meta{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 10px}
+.chip{font-size:11px;padding:3px 8px;border-radius:999px;background:#fdf1ec;color:#a4552f}
+.trend-dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:13px}
+.trend-dl dt{color:var(--sub);font-size:12px;white-space:nowrap}
+.trend-dl dd{margin:0;line-height:1.7}
+.trend-foot{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
+.trend-foot .src{flex:1;min-width:0;font-size:11px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
