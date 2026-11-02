@@ -110,3 +110,7 @@ button:active{filter:brightness(.94)}
 .fit-li{font-size:13px;line-height:1.8;color:#3d3630;padding:2px 0}
 .fit-li + .fit-li{border-top:1px dashed #f3ece5}
 .sheet .fit-body{max-height:60vh;overflow:auto;margin-bottom:4px}
+
+/* AI 诊断按钮 */
+.fit-btn{background:#fff7f2;border-color:#f0cdb8;color:#b8542a;font-weight:600}
+.fit-btn:active{background:#ffe9dc}
