@@ -183,5 +183,61 @@
   }
 
 
-  window.Engine = { briefText, tierInfo, cur, splitParts, outlinePlan, countWords, genStep, genPart, autoDraft, joinDraft, reviseStep, regenStep, buildContext, REVISE_RULE };
+
+  /* 把长文按节切分（用于分段润色，避免一次输出被截断） */
+  function splitForPolish(text) {
+    const parts = splitParts(text);
+    if (parts.length > 1) return parts;
+    // 没有节标题时按空行 + 长度切块，每块约 3500 字
+    const blocks = [];
+    let buf = '';
+    text.split(/\n\n+/).forEach(para => {
+      buf += (buf ? '\n\n' : '') + para;
+      if (countWords(buf) > 3500) { blocks.push({ title: '', body: buf }); buf = ''; }
+    });
+    if (buf.trim()) blocks.push({ title: '', body: buf });
+    return blocks;
+  }
+
+  /* 分段润色：逐节调用，最后拼成全文 */
+  async function polishInChunks(p, hooks) {
+    const P = PROMPTS.get();
+    const t = tierInfo(p);
+    const full = window.__polishSource ? window.__polishSource() : cur(p, 'draft');
+    const parts = splitForPolish(full);
+    const fb = (p.steps[polishStepKey()].feedback || '').trim();
+    const totalWords = countWords(full);
+    const out = [];
+    for (let i = 0; i < parts.length; i++) {
+      if (hooks.cancelled && hooks.cancelled()) throw new Error('已停止');
+      const part = parts[i];
+      const ratio = countWords(part.body) / Math.max(1, totalWords);
+      const target = Math.max(200, Math.round(t.words * ratio));
+      const prevTail = out.length ? out[out.length - 1].slice(-300) : '';
+      const nextHead = i + 1 < parts.length ? (parts[i + 1].body || '').slice(0, 200) : '';
+      const user = PROMPTS.fill(P.polishChunk, {
+        partTitle: part.title || ('第' + (i + 1) + '段'),
+        partBody: part.body,
+        prevTail,
+        nextHead,
+        isFirst: i === 0 ? '是（这是全文第一段，开头必须抓人）' : '否',
+        isLast: i === parts.length - 1 ? '是（这是全文最后一段，要收住，不烂尾）' : '否',
+        partWords: target,
+        words: t.words,
+        feedback: (i === 0 ? fb : '')
+      });
+      hooks.onProgress && hooks.onProgress(i, parts.length, '');
+      const r = await API.chat({
+        messages: API.buildMessages(P.system, user),
+        onDelta: (d, acc) => hooks.onProgress && hooks.onProgress(i, parts.length, acc),
+        signal: hooks.signal
+      });
+      out.push(r.trim());
+    }
+    return out.join('\n\n');
+  }
+
+  function polishStepKey() { return 'polish'; }
+
+  window.Engine = { briefText, tierInfo, cur, splitParts, outlinePlan, countWords, genStep, genPart, autoDraft, joinDraft, reviseStep, regenStep, buildContext, REVISE_RULE, polishInChunks, splitForPolish };
 })();
