@@ -4,11 +4,12 @@
     return [{ role: 'system', content: system }, { role: 'user', content: user }];
   }
 
-  async function chat({ messages, temperature, onDelta, signal, jsonMode }) {
+  async function chat({ messages, temperature, onDelta, signal, jsonMode, maxTokens }) {
     const cfg = Store.cfg();
     if (!cfg.apiKey) throw new Error('还没填 API Key，请去「设置」页填写');
     if (!cfg.baseUrl) throw new Error('还没填 Base URL，请去「设置」页填写');
 
+    window.__lastTruncated = false;
     let base = cfg.baseUrl.trim().replace(/\/+$/, '');
     if (!/\/v\d+$/.test(base) && !/\/chat\/completions$/.test(base)) base += '/v1';
     const url = /\/chat\/completions$/.test(base) ? base : base + '/chat/completions';
@@ -19,6 +20,9 @@
       temperature: typeof temperature === 'number' ? temperature : cfg.temperature,
       stream: !!cfg.stream
     };
+    // 显式指定输出上限；不指定时很多模型会默认 4096/8192，长文会被截断
+    const mt = maxTokens || cfg.maxTokens;
+    if (mt) body.max_tokens = mt;
     if (jsonMode) body.response_format = { type: 'json_object' };
 
     const res = await fetch(url, {
@@ -41,6 +45,8 @@
 
     if (!body.stream || !res.body) {
       const j = await res.json();
+      const fr = j.choices?.[0]?.finish_reason;
+      if (fr === 'length') window.__lastTruncated = true;
       return j.choices?.[0]?.message?.content || '';
     }
 
@@ -61,6 +67,8 @@
         if (data === '[DONE]') continue;
         try {
           const j = JSON.parse(data);
+          const fr = j.choices?.[0]?.finish_reason;
+          if (fr === 'length') window.__lastTruncated = true;
           const d = j.choices?.[0]?.delta?.content || '';
           if (d) { full += d; onDelta && onDelta(d, full); }
         } catch (e) { /* 分片不完整，忽略 */ }
