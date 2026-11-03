@@ -684,6 +684,8 @@
     opts = opts || {};
     const s = cur.steps[k];
     const mode = (opts && opts.mode) || 'fresh';
+    // 润色：走分段处理，避免一次输出被截断
+    if (k === 'polish') return doPolishChunks(opts);
     const cards = mode === 'revise' ? 1 : Math.max(1, Math.min(4, Store.cfg().cards || 1));
     if (mode === 'revise' && !(s.feedback || '').trim()) { toast('先写审核意见'); return; }
     // 有旧稿就存进历史，方便退回
@@ -819,6 +821,44 @@
       d.status = 'ready';
       endBusy();
     } catch (e) { endBusy(e); }
+  }
+
+  /* 分段润色：长文一次输出会被 max_tokens 截断，改成分段处理再拼接 */
+  async function doPolishChunks(opts) {
+    if (busy) return;
+    flushEdits();
+    const s = cur.steps.polish;
+    const mode = (opts && opts.mode) || 'fresh';
+    const prev = Engine.cur(cur, 'polish');
+    if (mode === 'revise' && !(s.feedback || '').trim()) { toast('先写审核意见'); return; }
+    // 改写：以当前润色稿为源；重新生成：以草稿为源
+    // 正文存的是分节数据，需要先拼成全文
+    const draftText = Engine.joinDraft(cur) || Engine.cur(cur, 'draft');
+    const source = mode === 'revise' && prev ? prev : draftText;
+    if (!source) { toast('还没有正文，先去完成分节正文'); return; }
+    if (prev) { s.history = s.history || []; s.history.unshift({ text: prev, at: Date.now() }); if (s.history.length > 8) s.history.length = 8; }
+
+    window.__polishSource = () => source;
+    setBusy('正在分段润色', 'polish');
+    try {
+      const out = await Engine.polishInChunks(cur, {
+        cancelled: () => busy && busy.ctrl.signal.aborted,
+        signal: busy.ctrl.signal,
+        onProgress: (i, total, acc) => {
+          busy.label = '正在润色第 ' + (i + 1) + ' / ' + total + ' 段';
+          if (acc !== undefined) busy.text = acc;
+          updateDock();
+        }
+      });
+      s.versions.push({ text: out.trim(), at: Date.now() });
+      s.sel = s.versions.length - 1;
+      s.status = 'ready';
+      s.feedback = '';
+      window.__polishSource = null;
+      endBusy();
+      const n = Engine.countWords(out);
+      toast('润色完成，共 ' + n + ' 字');
+    } catch (e) { window.__polishSource = null; endBusy(e); }
   }
 
   /* 基于勾选的热门方向生成组合创意 */
@@ -1481,6 +1521,7 @@
     mkIn('model', '模型名', 'text', 'deepseek-chat');
     mkIn('temperature', '温度', 'number', '0.9');
     mkIn('cards', '每次生成张数(1-4)', 'number', '1');
+    mkIn('maxTokens', '单次输出上限(max_tokens)', 'number', '32000');
     const sw = el('label', 'switch-row');
     const cb = el('input'); cb.type = 'checkbox'; cb.checked = !!cfg.stream;
     cb.onchange = () => Store.setCfg({ stream: cb.checked });
@@ -1507,10 +1548,10 @@
     pc.appendChild(el('h3', '', '提示词'));
     pc.appendChild(el('div', 'hint', '每个工序的提示词都可以改。{{topic}} 这类占位符会被自动替换成上一步的成果。'));
     const P = PROMPTS.get();
-    const keys = ['system', 'topic', 'setting', 'outline', 'draft', 'polish', 'trendFit', 'fitSetting', 'fitOutline', 'fitDraft', 'fitPolish', 'trendExtract', 'trendSuggest'];
+    const keys = ['system', 'topic', 'setting', 'outline', 'draft', 'polish', 'trendFit', 'fitSetting', 'fitOutline', 'fitDraft', 'fitPolish', 'polishChunk', 'trendExtract', 'trendSuggest'];
     const names = { system: '系统提示（全局）', topic: '① 选题', setting: '② 设定人设', outline: '③ 分节大纲', draft: '④ 逐节正文', polish: '⑤ 润色成稿',
       trendFit: '诊断 · 选题方向', fitSetting: '诊断 · 设定', fitOutline: '诊断 · 大纲', fitDraft: '诊断 · 正文', fitPolish: '诊断 · 定稿',
-      trendExtract: '热门方向 · 拆解文章', trendSuggest: '热门方向 · 组合创意' };
+      polishChunk: '⑤ 润色 · 单段', trendExtract: '热门方向 · 拆解文章', trendSuggest: '热门方向 · 组合创意' };
     keys.forEach(k => {
       const acc = el('div', 'acc');
       const hd = el('button', 'acc-hd');
