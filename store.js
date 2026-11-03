@@ -10,7 +10,8 @@
     model: 'deepseek-chat',
     temperature: 0.9,
     cards: 1,          // 每次生成几条候选
-    stream: true
+    stream: true,
+    maxTokens: 32000
   };
 
   function loadJSON(k, d) {
