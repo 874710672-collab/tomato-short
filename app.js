@@ -150,7 +150,8 @@
     els.bApprove.hidden = busyNow || !has;
 
     els.bRevise.textContent = k === 'draft' ? '✎ 按意见改本节' : '✎ 按意见改';
-    els.bRevise.disabled = !fb;
+    els.bRevise.disabled = false;
+    els.bRevise.classList.toggle('need-fb', !fb);
     els.bRevise.title = fb ? '带上原稿 + 你的意见，只改意见提到的地方' : '先在右边写审核意见';
     els.bRegen.textContent = k === 'draft' ? '↻ 重写本节' : '↻ 重新生成';
     els.bGen.textContent = k === 'draft' ? '写这一节' : '生成';
@@ -734,11 +735,9 @@
         s.sel = s.versions.length - 1;
         if (k === 'topic') s.picked = null;
         s.status = 'ready';
-        s.feedback = '';
         persist();
       }
       s.history = s.history || [];
-      s.feedback = '';
       endBusy();
     } catch (e) {
       s.feedback = fbSave;
@@ -762,8 +761,16 @@
 
   async function doRevise() {
     if (!cur) return;
+    if (busy) { toast('正在生成，稍等'); return; }
     flushEdits();
     const k = cur.step;
+    const fb = (cur.steps[k].feedback || '').trim();
+    if (!fb) {
+      toast('先在右下角「人工审核意见」里写下要改什么');
+      const ta = $('.review textarea');
+      if (ta) { ta.focus(); ta.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+      return;
+    }
     if (k === 'draft') return doDraftPart(cur.steps.draft.partIdx || 0, { mode: 'revise' });
     await doGen(k, { mode: 'revise' });
   }
@@ -812,7 +819,6 @@
       } catch (e) { d.parts[idx].issues = []; }
       d.partIdx = idx;
       d.status = 'ready';
-      d.feedback = '';
       endBusy();
     } catch (e) { endBusy(e); }
   }
@@ -879,7 +885,6 @@
       s.versions.push({ text: out.trim(), at: Date.now() });
       s.sel = s.versions.length - 1;
       s.status = 'ready';
-      s.feedback = '';
       window.__polishSource = null;
       endBusy();
       const n = Engine.countWords(out);
@@ -916,7 +921,6 @@
       s.sel = s.versions.length - 1;
       s.status = 'ready';
       s.picked = null;
-      s.feedback = '';
       endBusy();
     } catch (e) { endBusy(e); }
   }
