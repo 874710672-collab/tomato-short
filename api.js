@@ -1,5 +1,12 @@
 /* api.js — OpenAI 兼容接口调用，支持流式 */
 (function () {
+  /* 判断是不是「默认开深度思考」的模型（豆包 seed 系列等）。
+     其他家的模型不传 reasoning_effort，避免服务端不认识该参数而报 400。 */
+  function isThinkingModel(model) {
+    const m = String(model || '').toLowerCase();
+    return /doubao-seed/.test(m) || /^seed-/.test(m) || /doubao.*(2-[01]|seed)/.test(m);
+  }
+
   function buildMessages(system, user) {
     return [{ role: 'system', content: system }, { role: 'user', content: user }];
   }
@@ -23,8 +30,10 @@
     // 显式指定输出上限；不指定时很多模型会默认 4096/8192，长文会被截断
     const mt = maxTokens || cfg.maxTokens;
     if (mt) body.max_tokens = mt;
-    // 豆包等深度思考模型：关闭思考，避免思考过程混进正文
-    if (cfg.noThinking !== false) body.reasoning_effort = 'minimal';
+    // 只有确定支持「深度思考」的模型才传这个参数，其他家传了会 400
+    if (cfg.noThinking !== false && isThinkingModel(cfg.model)) {
+      body.reasoning_effort = 'minimal';
+    }
     if (jsonMode) body.response_format = { type: 'json_object' };
 
     const res = await fetch(url, {
@@ -87,5 +96,5 @@
     });
   }
 
-  window.API = { chat, buildMessages, testConn };
+  window.API = { chat, buildMessages, testConn, isThinkingModel };
 })();
