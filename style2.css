@@ -114,3 +114,11 @@ button:active{filter:brightness(.94)}
 /* AI 诊断按钮 */
 .fit-btn{background:#fff7f2;border-color:#f0cdb8;color:#b8542a;font-weight:600}
 .fit-btn:active{background:#ffe9dc}
+
+/* 一致性检查 */
+.issue-badge{font-size:11px;padding:2px 7px;border-radius:999px;background:#fff4e5;color:#b06a00;flex:0 0 auto}
+.issue-badge.err{background:#ffeeea;color:#c0392b;font-weight:600}
+.issue-box{margin-top:10px;padding:10px 12px;border-radius:10px;background:#fffdf7;border:1px solid #f0e3c8}
+.issue-line{font-size:12px;line-height:1.7;color:#7a6a4e}
+.issue-line.err{color:#b03a2e;font-weight:600}
+.issue-box .mini{margin-top:8px}
