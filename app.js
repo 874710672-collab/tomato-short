@@ -620,6 +620,22 @@
       if (busy && busy.step === 'draft') pre.classList.add('streaming');
       card.appendChild(pre);
     }
+    if (curPart && curPart.issues && curPart.issues.length) {
+      const box = el('div', 'issue-box');
+      curPart.issues.forEach(it => {
+        const line = el('div', 'issue-line ' + (it.level === 'error' ? 'err' : ''));
+        line.textContent = (it.level === 'error' ? '● ' : '○ ') + it.msg;
+        box.appendChild(line);
+      });
+      const recheck = el('button', 'mini', '重新检查');
+      recheck.onclick = () => {
+        const info = CHECK.parseSetting(Engine.cur(cur, 'setting'));
+        curPart.issues = CHECK.checkText(info, curPart.body, { banned: CHECK.parseBanned(Engine.cur(cur, 'setting')) });
+        persist(); render();
+      };
+      box.appendChild(recheck);
+      card.appendChild(box);
+    }
     const ops = el('div', 'doc-ops');
     const rewrite = el('button', 'mini', '按意见改本节');
     rewrite.onclick = () => doDraftPart(idx, { mode: 'revise' });
@@ -646,6 +662,11 @@
       row.appendChild(el('span', 'pi', pt ? '✓' : String(i + 1)));
       const title = (plan[i] && plan[i].title) || (pt && pt.title) || '第' + (i + 1) + '节';
       row.appendChild(el('span', 'pt', title.replace(/\s*\d+节\s*\|?/, ' ').trim() || title));
+      const iss = (pt && pt.issues) || [];
+      if (iss.length) {
+        const bad = iss.filter(x => x.level === 'error').length;
+        row.appendChild(el('span', 'issue-badge' + (bad ? ' err' : ''), '⚠ ' + iss.length));
+      }
       row.appendChild(el('span', 'pw', pt ? Engine.countWords(pt.body) + '字' : ((plan[i] && plan[i].words) ? plan[i].words + '字' : '')));
       row.onclick = () => { flushEdits(); d.partIdx = i; persist(); render(); };
       pr.appendChild(row);
@@ -783,7 +804,12 @@
         updateDock();
       }, busy.ctrl.signal);
       const plan = Engine.outlinePlan(Engine.cur(cur, 'outline'));
-      d.parts[idx] = { title: (plan[idx] && plan[idx].title) || ('第' + (idx + 1) + '节'), body: (mode === 'revise' ? out2 : out2).trim() };
+      const bodyText = (mode === 'revise' ? out2 : out2).trim();
+      d.parts[idx] = { title: (plan[idx] && plan[idx].title) || ('第' + (idx + 1) + '节'), body: bodyText };
+      try {
+        const info = CHECK.parseSetting(Engine.cur(cur, 'setting'));
+        d.parts[idx].issues = CHECK.checkText(info, bodyText, { banned: CHECK.parseBanned(Engine.cur(cur, 'setting')) });
+      } catch (e) { d.parts[idx].issues = []; }
       d.partIdx = idx;
       d.status = 'ready';
       d.feedback = '';
