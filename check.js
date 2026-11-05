@@ -32,7 +32,26 @@
       cands.forEach(c => { if (!names.has(c) && people.length < 5) { people.push({ name: c, role: '相关人物' }); names.add(c); } });
     }
 
-    const facts = {};
+    // 性别表
+    const genders = {};
+    const gb = text.match(/性别速查表[^\n]*\n([\s\S]*?)(?=━━━|$)/);
+    if (gb) {
+      gb[1].split('\n').forEach(line => {
+        const m = line.match(/^\s*[-·]?\s*([\u4e00-\u9fa5]{2,4})\s*[｜|]\s*(男|女)/);
+        if (m) genders[m[1]] = m[2];
+      });
+    }
+    // 兜底：从人物条目里抓「姓名/男/...」
+    if (!Object.keys(genders).length) {
+      const re = /姓名\s*[\/／]\s*(男|女)\s*[\/／]?/g;
+      let m;
+      const lines = text.split('\n');
+      lines.forEach(line => {
+        const mm = line.match(/姓名[\/／、\s]*([\u4e00-\u9fa5]{2,4})[\/／](男|女)/);
+        if (mm) genders[mm[1]] = mm[2];
+      });
+    }
+    const facts = { genders };
     const nmAge = text.match(/主角姓名与年龄[：:]\s*([^\n]+)/);
     if (nmAge) {
       const n = nmAge[1].match(/(\d{1,2})\s*岁/);
@@ -46,7 +65,7 @@
       if (d) facts.days = +d[1];
       facts.timeRaw = tm[1].trim();
     }
-    return { people, names, facts };
+    return { people, names, genders, facts };
   }
 
   /* 检查一节正文：人名误写、年龄冲突、重复段落、AI 套话 */
@@ -101,6 +120,26 @@
     const cliche = ['不禁', '不由得', '心中一颤', '宛如', '仿佛', '嘴角勾起', '与此同时', '心中暗想', '若有所思'];
     const found = cliche.filter(w => text.includes(w));
     if (found.length) issues.push({ level: 'warn', msg: 'AI 套话：' + found.join('、') });
+
+    // 4.5 人称错误：名字后面第一句的人称是否符合性别
+    if (settingInfo.genders && Object.keys(settingInfo.genders).length) {
+      Object.keys(settingInfo.genders).forEach(name => {
+        const g = settingInfo.genders[name];
+        const wrong = g === '男' ? '她' : '他';
+        const right = g === '男' ? '他' : '她';
+        // 名字后面 25 字内的第一个第三人称
+        const re = new RegExp(name + '([^。！？\n]{0,25}?)(' + wrong + ')', 'g');
+        let m; let n = 0;
+        while ((m = re.exec(text))) {
+          // 跳过"她"后面紧跟的引号对白里的另一个角色
+          n++;
+          if (n >= 1) {
+            issues.push({ level: 'error', msg: `人称可能写错：「${name}」设定为${g}性，但这里用了「${wrong}」—— …${m[0].slice(0, 24)}…` });
+            break;
+          }
+        }
+      });
+    }
 
     // 5. 超长段
     paras.forEach(p => { if (p.length > 160) issues.push({ level: 'warn', msg: '超长段落（' + p.length + ' 字），建议拆开' }); });
