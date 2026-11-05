@@ -11,7 +11,8 @@
     temperature: 0.9,
     cards: 1,          // 每次生成几条候选
     stream: true,
-    maxTokens: 32000
+    maxTokens: 32000,
+    noThinking: true
   };
 
   function loadJSON(k, d) {
