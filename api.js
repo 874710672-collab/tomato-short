@@ -23,6 +23,8 @@
     // 显式指定输出上限；不指定时很多模型会默认 4096/8192，长文会被截断
     const mt = maxTokens || cfg.maxTokens;
     if (mt) body.max_tokens = mt;
+    // 豆包等深度思考模型：关闭思考，避免思考过程混进正文
+    if (cfg.noThinking !== false) body.reasoning_effort = 'minimal';
     if (jsonMode) body.response_format = { type: 'json_object' };
 
     const res = await fetch(url, {
@@ -69,7 +71,8 @@
           const j = JSON.parse(data);
           const fr = j.choices?.[0]?.finish_reason;
           if (fr === 'length') window.__lastTruncated = true;
-          const d = j.choices?.[0]?.delta?.content || '';
+          const dl = j.choices?.[0]?.delta || {};
+          const d = dl.content || '';           // 只取正文，忽略 reasoning_content
           if (d) { full += d; onDelta && onDelta(d, full); }
         } catch (e) { /* 分片不完整，忽略 */ }
       }
