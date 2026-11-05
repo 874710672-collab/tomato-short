@@ -1562,7 +1562,7 @@
     const cb2 = el('input'); cb2.type = 'checkbox'; cb2.checked = cfg.noThinking !== false;
     cb2.onchange = () => Store.setCfg({ noThinking: cb2.checked });
     sw2.appendChild(cb2);
-    sw2.appendChild(el('span', '', '关闭深度思考（豆包等模型必开，否则思考过程会混进正文）'));
+    sw2.appendChild(el('span', '', '关闭深度思考（仅对豆包 seed 系列自动生效，其他模型不传该参数）'));
     c.appendChild(sw2);
     const row = el('div', 'sheet-acts');
     const test = el('button', 'ghost-btn', '测试连接');
