@@ -122,3 +122,7 @@ button:active{filter:brightness(.94)}
 .issue-line{font-size:12px;line-height:1.7;color:#7a6a4e}
 .issue-line.err{color:#b03a2e;font-weight:600}
 .issue-box .mini{margin-top:8px}
+
+/* 按意见改：没写意见时给出视觉提示但仍可点 */
+.ghost-btn.need-fb{opacity:.55}
+.ghost-btn.need-fb::after{content:" · 需先写意见";font-size:11px;color:var(--sub)}
