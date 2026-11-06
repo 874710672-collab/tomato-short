@@ -14,6 +14,8 @@
 创作简报：
 {{brief}}
 
+{{trends}}
+
 篇幅：{{tier}}（约 {{words}} 字，分 {{parts}} 节）
 
 要求：
@@ -31,6 +33,8 @@
 
 创作简报：
 {{brief}}
+
+{{trends}}
 
 篇幅：{{tier}}（约 {{words}} 字，分 {{parts}} 节）
 
@@ -58,6 +62,8 @@
 
 创作简报：
 {{brief}}
+
+{{trends}}
 
 篇幅：{{tier}}，约 {{words}} 字，共 {{parts}} 节。
 
