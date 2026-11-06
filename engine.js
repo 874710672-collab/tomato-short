@@ -70,6 +70,22 @@
   }
 
   /* 生成一个工序的一条候选 */
+  /* 生成「参考热门方向」段落；没勾选或关了开关就返回空 */
+  function trendsBlock(p) {
+    if (!p || p.useTrends === false) return '';
+    const ids = p.trends || [];
+    if (!ids.length || !window.TRENDS) return '';
+    const cards = window.TRENDS.all().filter(c => ids.includes(c.id));
+    if (!cards.length) return '';
+    const lines = cards.map((c, i) =>
+      `${i + 1}. ${c.name}\n   内核：${c.core || ''}\n   情绪：${c.emotion || ''}\n   易崩：${c.risk || ''}`
+    ).join('\n');
+    return `【参考热门方向】（作者选定的当期热门，请借鉴它们的爽点结构和情绪节奏，但**不要照搬案例里的人物、设定、场景**）
+${lines}
+
+参考要求：方向是"骨架"不是"内容"——用它们决定故事怎么推进、情绪怎么给，但具体的人和事必须是我简报里说的那些。`;
+  }
+
   async function genStep(p, step, onDelta, signal) {
     const P = PROMPTS.get();
     const t = tierInfo(p);
@@ -77,11 +93,11 @@
     const brief = briefText(p.brief);
     let user = '';
     if (step === 'topic') {
-      user = PROMPTS.fill(P.topic, { brief, tier: t.name, words: t.words, parts: t.parts, feedback: fb });
+      user = PROMPTS.fill(P.topic, { brief, tier: t.name, words: t.words, parts: t.parts, feedback: fb, trends: trendsBlock(p) });
     } else if (step === 'setting') {
-      user = PROMPTS.fill(P.setting, { topic: window.pickedTopic ? window.pickedTopic() : cur(p, 'topic'), brief, tier: t.name, words: t.words, parts: t.parts, feedback: fb });
+      user = PROMPTS.fill(P.setting, { topic: window.pickedTopic ? window.pickedTopic() : cur(p, 'topic'), brief, tier: t.name, words: t.words, parts: t.parts, feedback: fb, trends: trendsBlock(p) });
     } else if (step === 'outline') {
-      user = PROMPTS.fill(P.outline, { topic: cur(p, 'topic'), setting: cur(p, 'setting'), brief, tier: t.name, words: t.words, parts: t.parts, feedback: fb });
+      user = PROMPTS.fill(P.outline, { topic: cur(p, 'topic'), setting: cur(p, 'setting'), brief, tier: t.name, words: t.words, parts: t.parts, feedback: fb, trends: trendsBlock(p) });
     } else if (step === 'polish') {
       user = PROMPTS.fill(P.polish, { draft: cur(p, 'draft'), words: t.words, feedback: fb });
     }
@@ -239,5 +255,5 @@
 
   function polishStepKey() { return 'polish'; }
 
-  window.Engine = { briefText, tierInfo, cur, splitParts, outlinePlan, countWords, genStep, genPart, autoDraft, joinDraft, reviseStep, regenStep, buildContext, REVISE_RULE, polishInChunks, splitForPolish };
+  window.Engine = { briefText, tierInfo, cur, splitParts, outlinePlan, countWords, genStep, genPart, autoDraft, joinDraft, reviseStep, regenStep, buildContext, REVISE_RULE, polishInChunks, splitForPolish, trendsBlock };
 })();
