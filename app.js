@@ -169,7 +169,7 @@
     els.bApprove.hidden = busyNow || !has;
     if (isManual) {
       els.bApprove.textContent = '完成 · 这篇定稿了';
-      els.dockInfo.textContent = '左边改，右边实时预览；改动会自动保存';
+      els.dockInfo.textContent = '左边随便改（自动保存），右边是 AI 原文，不会被改动';
       return;
     }
 
@@ -1355,11 +1355,12 @@
     const s = cur.steps.manual;
     s.parts = s.parts || null;
 
-    // 初次进入：把定稿内容装进编辑区
+    // AI 原文：永远不动，右边只显示它
+    const aiText = Engine.cur(cur, 'polish') || Engine.joinDraft(cur) || '';
+    // 初次进入：把 AI 原文装进编辑区（方便直接改，省去复制）
     if (s.editor === '' || s.editor === undefined) {
-      const src = Engine.cur(cur, 'polish') || Engine.joinDraft(cur);
-      s.editor = src || '';
-      s.base = s.editor;
+      s.editor = aiText;
+      s.base = aiText;
       persist();
     }
 
@@ -1369,7 +1370,7 @@
     /* 左：编辑区 */
     const left = el('div', 'desk-pane');
     const lh = el('div', 'desk-head');
-    lh.appendChild(el('span', 'desk-title', '✎ 人工编辑区'));
+    lh.appendChild(el('span', 'desk-title', '✎ 人工编辑区（改完记得复制）'));
     const lcount = el('span', 'desk-count', '');
     lh.appendChild(lcount);
     left.appendChild(lh);
@@ -1398,14 +1399,13 @@
         s.lastSave = Date.now();
         persist();
         updCount();
-        refreshRight();
       }, 400);
     };
 
     /* 右：定稿显示 */
     const right = el('div', 'desk-pane desk-read');
     const rh = el('div', 'desk-head');
-    rh.appendChild(el('span', 'desk-title', '📖 定稿预览'));
+    rh.appendChild(el('span', 'desk-title', '📖 AI 原文（只读参考）'));
     const rn = el('span', 'desk-count', '');
     rh.appendChild(rn);
     right.appendChild(rh);
@@ -1413,8 +1413,8 @@
     right.appendChild(view);
 
     function refreshRight() {
-      view.textContent = ta.value;
-      rn.textContent = Engine.countWords(ta.value) + ' 字';
+      view.textContent = aiText;             // 永远是 AI 原文，不跟随左侧
+      rn.textContent = Engine.countWords(aiText) + ' 字';
     }
     refreshRight();
 
@@ -1440,10 +1440,10 @@
     };
     const bCopy = el('button', 'dbtn', '复制全文');
     bCopy.onclick = () => copy(ta.value);
-    const bReset = el('button', 'dbtn danger', '重置为定稿原文');
+    const bReset = el('button', 'dbtn danger', '恢复成 AI 原文');
     bReset.onclick = () => {
-      if (!confirm('把编辑区恢复成定稿原文？当前修改会丢失（已保存的版本不受影响）。')) return;
-      s.editor = Engine.cur(cur, 'polish') || Engine.joinDraft(cur);
+      if (!confirm('把编辑区恢复成 AI 原文？当前修改会丢失（已保存的版本不受影响）。')) return;
+      s.editor = aiText;
       persist(); render();
     };
     bar.appendChild(bFind);
