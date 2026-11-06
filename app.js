@@ -135,6 +135,17 @@
     updateDock();
   }
 
+  /* 只刷新底栏文字，不重排整页（流式高频调用用这个） */
+  let _wcT = 0;
+  function tickDock() {
+    const now = Date.now();
+    if (now - _wcT < 80) return;   // 最多 12 次/秒，避免掉帧
+    _wcT = now;
+    if (!busy) return;
+    const n = Engine.countWords(busy.text || '');
+    els.dockInfo.textContent = busy.label + ' · 已生成 ' + n + ' 字';
+  }
+
   function updateDock() {
     if (!cur) { ['bRevise','bRegen','bGen','bApprove'].forEach(k => els[k].hidden = true); return; }
     const k = cur.step;
@@ -730,7 +741,7 @@
         const out = await runner(cur, k, (d, full) => {
           busy.text = full;
           if (app.streamEl) app.streamEl.textContent = full;
-          updateDock();
+          tickDock();
         }, busy.ctrl.signal);
         s.versions.push({ text: out.trim(), at: Date.now() });
         s.sel = s.versions.length - 1;
@@ -802,7 +813,7 @@
         const ctx = Engine.buildContext(cur, 'draft', Engine.tierInfo(cur));
         out = await API.chat({
           messages: API.buildMessages(P.system + '\n\n' + rule, ctx),
-          onDelta: (dd, full) => { busy.text = full; if (app.streamEl) app.streamEl.textContent = full; updateDock(); },
+          onDelta: (dd, full) => { busy.text = full; if (app.streamEl) app.streamEl.textContent = full; tickDock(); },
           signal: busy.ctrl.signal
         });
       }
@@ -847,7 +858,7 @@
           busy.text = full;
           busy.partIdx = i;
           if (app.streamEl) app.streamEl.textContent = full;
-          updateDock();
+          tickDock();
         },
         onPartDone: (i, p) => { busy.partIdx = i + 1; d.partIdx = Math.min(i + 1, total - 1); }
       });
@@ -879,7 +890,7 @@
         signal: busy.ctrl.signal,
         onProgress: (i, total, acc) => {
           busy.label = '正在润色第 ' + (i + 1) + ' / ' + total + ' 段';
-          if (acc !== undefined) busy.text = acc;
+          busy.text = (busy._done || '') + (acc || '');
           updateDock();
         }
       });
@@ -984,7 +995,7 @@
     try {
       const out = await API.chat({
         messages: API.buildMessages(P.system, PROMPTS.fill(P[meta.key], vars)),
-        onDelta: (d, full) => { busy.text = full; },
+        onDelta: (d, full) => { busy.text = full; tickDock(); },
         signal: busy.ctrl.signal
       });
       cur.fits = cur.fits || {};
