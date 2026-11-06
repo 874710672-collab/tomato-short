@@ -194,3 +194,9 @@ body.desk-mode .primary-btn{background:var(--dk-accent);color:#1a1426}
   .desk-pane{min-height:42vh}
   .desk-editor,.desk-read .desk-doc{min-height:34vh}
 }
+
+/* 导出预览 */
+.ex-preview{
+  margin:10px 0;padding:10px 12px;border-radius:10px;background:#faf8f5;border:1px solid var(--line);
+  font-size:12.5px;line-height:1.7;color:#5d564e;white-space:pre-wrap;max-height:180px;overflow:auto;
+}
