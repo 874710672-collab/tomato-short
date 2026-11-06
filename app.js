@@ -15,6 +15,7 @@
   };
 
   let cur = Store.current();
+  if (cur && window.migrateProject) cur = window.migrateProject(cur);
   var app = { streamEl: null };
   let busy = null;          // 当前生成状态 {ctrl, step, text}
   let view = 'home';        // project | home | settings | trends
@@ -115,6 +116,7 @@
 
   function render() {
     flushEdits();
+    if (cur && window.migrateProject) cur = window.migrateProject(cur);
     renderTop();
     renderSteps();
     $('#btnExport').hidden = !(view === 'project' && cur);
@@ -1598,7 +1600,7 @@
       it.appendChild(m);
       const a = el('div', 'pa');
       const open = el('button', 'mini', '打开');
-      open.onclick = () => { Store.setCurrent(p.id); cur = Store.get(p.id); view = 'project'; render(); };
+      open.onclick = () => { Store.setCurrent(p.id); cur = window.migrateProject ? window.migrateProject(Store.get(p.id)) : Store.get(p.id); view = 'project'; render(); };
       const ren = el('button', 'mini', '重命名');
       ren.onclick = () => {
         const n = prompt('项目名称', p.title);
@@ -1621,16 +1623,39 @@
     stage.appendChild(w);
     const bk = el('div', 'card');
     bk.appendChild(el('h3', '', '备份'));
-    const b1 = el('button', 'mini', '导出全部数据(JSON)');
+    const b1 = el('button', 'mini', '导出全量备份');
     b1.onclick = exportBackup;
-    bk.appendChild(b1);
-    bk.appendChild(el('div', 'hint', '数据只存在这台设备上。换设备或清缓存前记得导出。'));
+    const b2 = el('button', 'mini', '导入备份');
+    b2.onclick = importBackup;
+    bk.appendChild(b1); bk.appendChild(b2);
+    bk.appendChild(el('div', 'hint', '备份包含：所有作品（含正文/大纲/设定/人工修改历史）、自定义方向库、提示词修改、接口设置（不含 API Key）。数据只存在这台设备上，换设备或清缓存前记得导出。'));
     stage.appendChild(bk);
   }
 
+  /* 全量备份：项目 + 方向库 + 配置 + 所有提示词修改 */
   function exportBackup() {
-    const data = { v: 1, at: Date.now(), projects: Store.projects() };
-    download('短篇工坊备份-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(data, null, 2), 'application/json');
+    const cfg = Store.cfg();
+    const data = {
+      v: 2,
+      app: '番茄短篇工坊',
+      at: Date.now(),
+      counts: {},
+      projects: Store.projects(),
+      trends: TRENDS.getCustom(),
+      trendsHidden: TRENDS.getHidden(),
+      prompts: cfg.prompts || {},
+      settings: {
+        baseUrl: cfg.baseUrl, model: cfg.model, temperature: cfg.temperature,
+        cards: cfg.cards, maxTokens: cfg.maxTokens, stream: cfg.stream, noThinking: cfg.noThinking
+      }
+    };
+    data.counts.projects = data.projects.length;
+    data.counts.trends = data.trends.length;
+    data.counts.prompts = Object.keys(data.prompts).length;
+    // 不导出 API Key（安全）
+    const name = '短篇工坊全量备份-' + new Date().toISOString().slice(0, 10) + '.json';
+    download(name, JSON.stringify(data, null, 2), 'application/json');
+    toast('已导出：' + data.counts.projects + ' 个项目、' + data.counts.trends + ' 个自定义方向');
   }
   function importBackup() {
     // iOS 上必须把 input 挂进文档，否则 .click() 静默失效
@@ -1663,6 +1688,17 @@
     if (!Array.isArray(arr) || !arr.length) throw new Error('文件里没有项目数据');
     const good = arr.filter(p => p && p.id && p.steps);
     if (!good.length) throw new Error('数据格式不认识（可能不是本 App 的备份）');
+    // 恢复方向库与提示词（有就恢复）
+    if (Array.isArray(d.trends) && d.trends.length) {
+      const cur2 = TRENDS.getCustom();
+      const ids = new Set(cur2.map(x => x.id));
+      d.trends.forEach(t => { if (!ids.has(t.id)) { cur2.push(t); ids.add(t.id); } });
+      localStorage.setItem('ts_trends_v1', JSON.stringify(cur2));
+    }
+    if (Array.isArray(d.trendsHidden)) localStorage.setItem('ts_trends_hidden', JSON.stringify(d.trendsHidden));
+    if (d.prompts && typeof d.prompts === 'object') {
+      Store.setCfg({ prompts: Object.assign({}, Store.cfg().prompts || {}, d.prompts) });
+    }
     const existing = Store.projects();
     const byId = new Map(existing.map(p => [p.id, p]));
     let added = 0, replaced = 0, dup = 0;
@@ -1689,6 +1725,17 @@
   }
 
   /* ===== 导出 ===== */
+  /* 番茄格式：不隔行——段落之间只留一个换行，去掉所有空行 */
+  function toTomato(text) {
+    return String(text)
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map(l => l.replace(/[ \t\u3000]+$/g, ''))          // 去行尾空白
+      .filter(l => l.trim() !== '')                        // 删掉空行
+      .join('\n')
+      .trim();
+  }
+
   function openExport() {
     if (!cur) return;
     flushEdits();
@@ -1696,37 +1743,59 @@
     const full = (man && man.trim()) ? man
       : (cur.steps.polish.status === 'done' || cur.steps.polish.status === 'ready'
         ? Engine.cur(cur, 'polish') : Engine.joinDraft(cur));
-    const plain = full.replace(/^第[一二三四五六七八九十百零\d]+节.*$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+
+    // 带节标题的版本（留档用）
+    const mdPlain = full.replace(/\n{3,}/g, '\n\n').trim();
+    // 番茄格式：直接粘后台，不隔行
+    const tomato = toTomato(full);
+
     sheet(`
       <h2>导出 <button class="close">✕</button></h2>
       <div class="grid2">
         <div>
-          <div class="field"><label>标题（可改）</label><input id="exTitle" value=""></div>
-          <div class="field"><label>简介（可改，150字内更好过审）</label><textarea id="exIntro" rows="4"></textarea></div>
+          <div class="field"><label>标题（可改）</label><input id="exTitle"></div>
+          <div class="field"><label>简介（可改，150字内更好过审）</label><textarea id="exIntro" rows="3"></textarea></div>
         </div>
         <div>
-          <div class="field"><label>正文字数</label><input id="exWords" value="" readonly></div>
-          <div class="hint">纯文本适合直接粘进番茄后台；Markdown 带节标题，适合留档。</div>
+          <div class="field"><label>正文字数</label><input id="exWords" readonly></div>
+          <div class="field"><label>段落格式</label>
+            <select id="exMode">
+              <option value="tomato">不隔行（番茄后台直接用）</option>
+              <option value="blank">段间空一行（留档/阅读用）</option>
+            </select>
+          </div>
         </div>
       </div>
+      <div class="ex-preview" id="exPrev"></div>
       <div class="sheet-acts">
-        <button class="primary-btn" id="exCopyPlain">复制纯文本</button>
-        <button class="ghost-btn" id="exCopyMd">复制 Markdown</button>
+        <button class="primary-btn" id="exCopy">复制全文</button>
         <button class="ghost-btn" id="exTxt">下载 .txt</button>
-        <button class="ghost-btn" id="exMd">下载 .md</button>
+        <button class="ghost-btn" id="exMd">下载 .md（含标题）</button>
       </div>
     `, (body) => {
       const T = $('#exTitle', body), I = $('#exIntro', body);
+      const M = $('#exMode', body), P = $('#exPrev', body);
       T.value = cur.title;
       I.value = cur.brief.idea || '';
       $('#exWords', body).value = Engine.countWords(full) + ' 字';
-      const md = () => '# ' + (T.value || cur.title) + '\n\n' + (I.value ? '> ' + I.value.replace(/\n/g, '\n> ') + '\n\n' : '') + full;
-      $('#exCopyPlain', body).onclick = () => { copy(plain); closeSheet(); };
-      $('#exCopyMd', body).onclick = () => { copy(md()); closeSheet(); };
-      $('#exTxt', body).onclick = () => { download((T.value || '短篇') + '.txt', plain); toast('已下载'); };
-      $('#exMd', body).onclick = () => { download((T.value || '短篇') + '.md', md()); toast('已下载'); };
+
+      const build = () => (M.value === 'tomato' ? tomato : mdPlain);
+      const mdFile = () => '# ' + (T.value || cur.title) + '\n\n' +
+        (I.value ? '> ' + I.value.replace(/\n/g, '\n> ') + '\n\n' : '') + mdPlain;
+
+      const drawPrev = () => {
+        const t = build();
+        P.textContent = t.slice(0, 400) + (t.length > 400 ? '\n…' : '');
+      };
+      M.onchange = drawPrev;
+      drawPrev();
+
+      $('#exCopy', body).onclick = () => { copy(build()); closeSheet(); };
+      $('#exTxt', body).onclick = () => { download((T.value || '短篇') + '.txt', build()); toast('已下载'); };
+      $('#exMd', body).onclick = () => { download((T.value || '短篇') + '.md', mdFile()); toast('已下载'); };
     });
   }
+
 
   /* ===== 设置 ===== */
   let settingsBack = null;
