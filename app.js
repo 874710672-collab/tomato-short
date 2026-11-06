@@ -1093,7 +1093,23 @@
     const h = el('h3', '', '热门方向库');
     h.appendChild(el('span', 'tag', cards.length + ' 个方向'));
     c.appendChild(h);
-    c.appendChild(el('div', 'hint', '来源：番茄作家课堂官方文章。勾选后，在「选题立意」里可以基于这些方向生成组合创意。'));
+    c.appendChild(el('div', 'hint', '来源：番茄作家课堂官方文章。勾选后，选题/设定/大纲生成时会自动参考这些方向。'));
+
+    if (cur) {
+      const sw = el('label', 'switch-row');
+      const cb = el('input'); cb.type = 'checkbox';
+      cb.checked = cur.useTrends !== false;
+      const cnt = (cur.trends || []).length;
+      const stat = el('span', '', cnt
+        ? (cur.useTrends !== false ? '✓ 已选 ' + cnt + ' 个方向，会在选题/设定/大纲里自动参考' : '已选 ' + cnt + ' 个方向，但已关闭参考（生成时不会带上）')
+        : '还没选方向');
+      stat.className = 'switch-note' + (cnt && cur.useTrends !== false ? ' on' : '');
+      cb.onchange = () => { cur.useTrends = cb.checked; persist(); render(); };
+      sw.appendChild(cb);
+      sw.appendChild(el('span', '', '生成时自动参考这些方向'));
+      c.appendChild(sw);
+      c.appendChild(stat);
+    }
     if (cur && navFrom.view === 'project') {
       const backBtn = el('button', 'primary-btn back-btn', '← 返回「' + (cur.title || '短篇') + '」');
       backBtn.onclick = () => { navFrom.view = null; flushEdits(); view = 'project'; render(); };
