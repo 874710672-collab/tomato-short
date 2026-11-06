@@ -17,7 +17,8 @@
   let cur = Store.current();
   var app = { streamEl: null };
   let busy = null;          // 当前生成状态 {ctrl, step, text}
-  let view = 'home';        // project | home | settings
+  let view = 'home';        // project | home | settings | trends
+  const navFrom = { view: null };   // 记录子页面是从哪进来的
   let manualEdit = {};      // 人工手改缓存 {step: text}
 
   /* ---------- 工具 ---------- */
@@ -1076,6 +1077,7 @@
   /* ===== 热门方向库 ===== */
   function openTrends() {
     flushEdits();
+    if (view !== 'trends') navFrom.view = view;
     view = 'trends';
     render();
   }
@@ -1092,6 +1094,11 @@
     h.appendChild(el('span', 'tag', cards.length + ' 个方向'));
     c.appendChild(h);
     c.appendChild(el('div', 'hint', '来源：番茄作家课堂官方文章。勾选后，在「选题立意」里可以基于这些方向生成组合创意。'));
+    if (cur && navFrom.view === 'project') {
+      const backBtn = el('button', 'primary-btn back-btn', '← 返回「' + (cur.title || '短篇') + '」');
+      backBtn.onclick = () => { navFrom.view = null; flushEdits(); view = 'project'; render(); };
+      c.appendChild(backBtn);
+    }
     const acts = el('div', 'doc-ops');
     const b1 = el('button', 'mini', '＋ 粘贴新课堂文章');
     b1.onclick = openTrendImport;
@@ -1321,7 +1328,18 @@
   /* ===== 事件绑定 ===== */
   $('#btnHome').onclick = () => {
     if (busy) { toast('正在生成，先停一下'); return; }
-    if (view === 'home') { view = cur ? 'project' : 'home'; } else { flushEdits(); view = 'home'; }
+    if (view === 'home') { view = cur ? 'project' : 'home'; render(); return; }
+    if (view === 'trends' || view === 'settings') {
+      // 从项目里进来的，就回项目；否则回首页
+      const back = navFrom.view || (cur ? 'project' : 'home');
+      navFrom.view = null;
+      flushEdits();
+      view = back;
+      render();
+      return;
+    }
+    flushEdits();
+    view = 'home';
     render();
   };
   $('#btnSet').onclick = openSettings;
@@ -1521,7 +1539,7 @@
 
   /* ===== 设置 ===== */
   let settingsBack = null;
-  function openSettings() { flushEdits(); settingsBack = (view === 'trends') ? 'trends' : null; view = 'settings'; render(); }
+  function openSettings() { flushEdits(); settingsBack = (view === 'trends') ? 'trends' : null; if (view !== 'settings') navFrom.view = view; view = 'settings'; render(); }
 
   function renderSettings() {
     stage.innerHTML = '';
@@ -1573,8 +1591,13 @@
       catch (e) { out.textContent = '✕ ' + e.message; out.className = 'err'; }
     };
     row.appendChild(test);
-    const back = el('button', 'primary-btn', '返回');
-    back.onclick = () => { view = settingsBack || (cur ? 'project' : 'home'); settingsBack = null; render(); };
+    const backTarget = cur && navFrom.view === 'project' ? 'project' : (settingsBack || (cur ? 'project' : 'home'));
+    const back = el('button', 'primary-btn', '← 返回' + (backTarget === 'project' && cur ? '「' + (cur.title || '短篇') + '」' : '首页'));
+    back.onclick = () => {
+      const t = settingsBack || navFrom.view || (cur ? 'project' : 'home');
+      settingsBack = null; navFrom.view = null;
+      view = t; render();
+    };
     row.appendChild(back);
     c.appendChild(row);
     c.appendChild(out);
