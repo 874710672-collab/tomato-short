@@ -76,7 +76,7 @@
     if (!cur) { els.project.textContent = '短篇工坊'; els.sub.textContent = '还没有项目'; return; }
     const t = Engine.tierInfo(cur);
     els.project.textContent = cur.title;
-    els.sub.textContent = `${STEP_NAME[cur.step]} · 第${STEP_ORDER.indexOf(cur.step) + 1}/5 步 · ${t.name} 约${t.words}字`;
+    els.sub.textContent = `${STEP_NAME[cur.step]} · 第${STEP_ORDER.indexOf(cur.step) + 1}/${STEP_ORDER.length} 步 · ${t.name} 约${t.words}字`;
   }
 
   function stepState(p, k) {
@@ -120,6 +120,7 @@
     $('#btnExport').hidden = !(view === 'project' && cur);
     $('#btnSet').hidden = view === 'settings';
     $('#dock').classList.toggle('empty', view !== 'project' || !cur);
+    document.body.classList.toggle('desk-mode', view === 'project' && !!cur && cur.step === 'manual');
     $('#steps').hidden = !(view === 'project' && cur);
     els.bStop.hidden = !busy;
     if (view === 'home') { renderHome(); return; }
@@ -130,8 +131,10 @@
     stage.innerHTML = '';
     const wrap = el('div');
     stage.appendChild(wrap);
-    renderBrief(wrap);
-    if (k === 'draft') renderDraft(wrap); else renderStepDoc(wrap, k);
+    if (k !== 'manual') renderBrief(wrap);
+    if (k === 'draft') renderDraft(wrap);
+    else if (k === 'manual') renderManual(wrap);
+    else renderStepDoc(wrap, k);
     updateDock();
   }
 
@@ -152,14 +155,21 @@
     const s = cur.steps[k];
     const has = k === 'draft'
       ? !!(s.parts && s.parts[s.partIdx || 0])
+      : k === 'manual' ? !!(s.editor && s.editor.trim())
       : !!(s.status && s.status !== 'idle' && Engine.cur(cur, k));
     const fb = (s.feedback || '').trim();
     const busyNow = !!busy;
 
-    els.bGen.hidden = busyNow || has;
-    els.bRevise.hidden = busyNow || !has;
-    els.bRegen.hidden = busyNow || !has;
+    const isManual = k === 'manual';
+    els.bGen.hidden = busyNow || has || isManual;
+    els.bRevise.hidden = busyNow || !has || isManual;
+    els.bRegen.hidden = busyNow || !has || isManual;
     els.bApprove.hidden = busyNow || !has;
+    if (isManual) {
+      els.bApprove.textContent = '完成 · 这篇定稿了';
+      els.dockInfo.textContent = '左边改，右边实时预览；改动会自动保存';
+      return;
+    }
 
     els.bRevise.textContent = k === 'draft' ? '✎ 按意见改本节' : '✎ 按意见改';
     els.bRevise.disabled = false;
@@ -167,7 +177,7 @@
     els.bRevise.title = fb ? '带上原稿 + 你的意见，只改意见提到的地方' : '先在右边写审核意见';
     els.bRegen.textContent = k === 'draft' ? '↻ 重写本节' : '↻ 重新生成';
     els.bGen.textContent = k === 'draft' ? '写这一节' : '生成';
-    els.bApprove.textContent = k === 'polish' ? '定稿 · 完成'
+    els.bApprove.textContent = k === 'polish' ? '进入人工修改'
       : k === 'draft' ? '正文写完 · 进入润色' : '通过 · 进入下一环节';
 
     if (busyNow) {
@@ -1338,6 +1348,158 @@
     else openTrendImport();
   }
 
+  /* ===== ⑥ 人工修改：左编辑 / 右定稿，深色工作台 ===== */
+  function renderManual(root) {
+    const s = cur.steps.manual;
+    s.parts = s.parts || null;
+
+    // 初次进入：把定稿内容装进编辑区
+    if (s.editor === '' || s.editor === undefined) {
+      const src = Engine.cur(cur, 'polish') || Engine.joinDraft(cur);
+      s.editor = src || '';
+      s.base = s.editor;
+      persist();
+    }
+
+    const desk = el('div', 'desk');
+    root.appendChild(desk);
+
+    /* 左：编辑区 */
+    const left = el('div', 'desk-pane');
+    const lh = el('div', 'desk-head');
+    lh.appendChild(el('span', 'desk-title', '✎ 人工编辑区'));
+    const lcount = el('span', 'desk-count', '');
+    lh.appendChild(lcount);
+    left.appendChild(lh);
+
+    const ta = el('textarea', 'desk-editor');
+    ta.value = s.editor || '';
+    ta.spellcheck = false;
+    ta.placeholder = '定稿内容会出现在这里，直接改就行。改动自动保存。';
+    left.appendChild(ta);
+
+    const updCount = () => {
+      const t = ta.value;
+      const now = Engine.countWords(t);
+      const base = Engine.countWords(s.base || '');
+      const diff = now - base;
+      lcount.textContent = now + ' 字' + (diff ? '（' + (diff > 0 ? '+' : '') + diff + '）' : ' · 未改动');
+    };
+    updCount();
+
+    let saveT = null;
+    ta.oninput = () => {
+      clearTimeout(saveT);
+      lcount.textContent = Engine.countWords(ta.value) + ' 字';
+      saveT = setTimeout(() => {
+        s.editor = ta.value;
+        s.lastSave = Date.now();
+        persist();
+        updCount();
+        refreshRight();
+      }, 400);
+    };
+
+    /* 右：定稿显示 */
+    const right = el('div', 'desk-pane desk-read');
+    const rh = el('div', 'desk-head');
+    rh.appendChild(el('span', 'desk-title', '📖 定稿预览'));
+    const rn = el('span', 'desk-count', '');
+    rh.appendChild(rn);
+    right.appendChild(rh);
+    const view = el('div', 'desk-doc');
+    right.appendChild(view);
+
+    function refreshRight() {
+      view.textContent = ta.value;
+      rn.textContent = Engine.countWords(ta.value) + ' 字';
+    }
+    refreshRight();
+
+    desk.appendChild(left);
+    desk.appendChild(right);
+
+    /* 工具栏 */
+    const bar = el('div', 'desk-tools');
+    const bFind = el('button', 'dbtn', '替换…');
+    bFind.onclick = () => openReplace(ta, refreshRight);
+    const bSave = el('button', 'dbtn', '保存为新版本');
+    bSave.onclick = () => {
+      const old = s.editor;
+      if (!old.trim()) { toast('编辑区是空的'); return; }
+      s.versions = s.versions || [];
+      s.versions.unshift({ text: old, at: Date.now() });
+      s.base = old;
+      s.status = 'ready';
+      persist();
+      updCount();
+      toast('已保存为新版本');
+      render();
+    };
+    const bCopy = el('button', 'dbtn', '复制全文');
+    bCopy.onclick = () => copy(ta.value);
+    const bReset = el('button', 'dbtn danger', '重置为定稿原文');
+    bReset.onclick = () => {
+      if (!confirm('把编辑区恢复成定稿原文？当前修改会丢失（已保存的版本不受影响）。')) return;
+      s.editor = Engine.cur(cur, 'polish') || Engine.joinDraft(cur);
+      persist(); render();
+    };
+    bar.appendChild(bFind);
+    bar.appendChild(bSave);
+    bar.appendChild(bCopy);
+    bar.appendChild(bReset);
+
+    if (s.versions && s.versions.length) {
+      const bHist = el('button', 'dbtn', '历史（' + s.versions.length + '）');
+      bHist.onclick = () => {
+        sheet('<h2>人工修改历史 <button class="close">✕</button></h2>' +
+          s.versions.map((v, i) =>
+            '<div class="hist-row"><span>' + fmtTime(v.at) + ' · ' + Engine.countWords(v.text) + '字</span>' +
+            '<button class="mini" data-i="' + i + '">载入</button></div>'
+          ).join('') +
+          '<div class="sheet-acts"></div>',
+          (body) => {
+            body.querySelectorAll('[data-i]').forEach(btn => {
+              btn.onclick = () => {
+                const i = +btn.dataset.i;
+                s.editor = s.versions[i].text;
+                s.base = s.editor;
+                persist(); closeSheet(); render();
+                toast('已载入');
+              };
+            });
+          });
+      };
+      bar.appendChild(bHist);
+    }
+    root.insertBefore(bar, desk.nextSibling);
+
+    app.manualTA = ta;
+  }
+
+  /* 查找替换 */
+  function openReplace(ta, after) {
+    sheet(`<h2>查找替换 <button class="close">✕</button></h2>
+      <div class="field"><label>查找</label><input id="rpFind" placeholder="要替换的文字"></div>
+      <div class="field"><label>替换为</label><input id="rpTo" placeholder="留空则删除"></div>
+      <div class="err" id="rpMsg" hidden></div>
+      <div class="sheet-acts"><button class="primary-btn" id="rpAll">全部替换</button></div>
+    `, (b) => {
+      $('#rpAll', b).onclick = () => {
+        const f = $('#rpFind', b).value;
+        const t = $('#rpTo', b).value;
+        if (!f) { $('#rpMsg', b).hidden = false; $('#rpMsg', b).textContent = '查找内容不能为空'; return; }
+        const n = ta.value.split(f).length - 1;
+        if (!n) { $('#rpMsg', b).hidden = false; $('#rpMsg', b).textContent = '没找到「' + f + '」'; return; }
+        ta.value = ta.value.split(f).join(t);
+        ta.dispatchEvent(new Event('input'));
+        closeSheet();
+        toast('已替换 ' + n + ' 处');
+        if (after) after();
+      };
+    });
+  }
+
   /* ===== 空状态 ===== */
   function renderEmpty() {
     stage.innerHTML = '';
@@ -1530,8 +1692,10 @@
   function openExport() {
     if (!cur) return;
     flushEdits();
-    const full = cur.steps.polish.status === 'done' || cur.steps.polish.status === 'ready'
-      ? Engine.cur(cur, 'polish') : Engine.joinDraft(cur);
+    const man = cur.steps.manual && cur.steps.manual.editor;
+    const full = (man && man.trim()) ? man
+      : (cur.steps.polish.status === 'done' || cur.steps.polish.status === 'ready'
+        ? Engine.cur(cur, 'polish') : Engine.joinDraft(cur));
     const plain = full.replace(/^第[一二三四五六七八九十百零\d]+节.*$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
     sheet(`
       <h2>导出 <button class="close">✕</button></h2>
