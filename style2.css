@@ -126,3 +126,6 @@ button:active{filter:brightness(.94)}
 /* 按意见改：没写意见时给出视觉提示但仍可点 */
 .ghost-btn.need-fb{opacity:.55}
 .ghost-btn.need-fb::after{content:" · 需先写意见";font-size:11px;color:var(--sub)}
+
+/* 子页面返回项目按钮 */
+.back-btn{width:100%;margin:12px 0 4px;text-align:center}
