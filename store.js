@@ -27,10 +27,13 @@
     cfg() { return Object.assign({}, DEFAULT_CFG, loadJSON(K_CFG, {})); },
     setCfg(patch) { const c = Object.assign(this.cfg(), patch); saveJSON(K_CFG, c); return c; },
 
-    projects() { return loadJSON(K_PROJ, []); },
+    projects() { const l = loadJSON(K_PROJ, []); return Array.isArray(l) ? l.map(migrate) : []; },
     currentId() { return localStorage.getItem(K_CUR) || null; },
     setCurrent(id) { localStorage.setItem(K_CUR, id); },
-    get(id) { return this.projects().find(p => p.id === id) || null; },
+    get(id) {
+      const p = this.projects().find(x => x.id === id);
+      return p ? migrate(p) : null;
+    },
     current() { return this.get(this.currentId()); },
     save(p) {
       p.updatedAt = Date.now();
@@ -65,6 +68,26 @@
     l: { name: '短篇·大', min: 15000, max: 20000, parts: 7 }
   };
 
+  /* 老版本数据补全缺失字段，避免升级后打不开 */
+  function migrate(p) {
+    if (!p || typeof p !== 'object') return p;
+    p.brief = Object.assign({ genre: '', tags: '', idea: '', pov: '第三人称', style: '', avoid: '' }, p.brief || {});
+    p.steps = p.steps || {};
+    STEPS.forEach(k => {
+      const d = { status: 'idle', versions: [], sel: 0, feedback: '' };
+      if (k === 'draft') { d.parts = []; d.partIdx = 0; }
+      if (k === 'manual') { d.editor = ''; d.lastSave = 0; d.base = ''; }
+      p.steps[k] = Object.assign(d, p.steps[k] || {});
+      if (!Array.isArray(p.steps[k].versions)) p.steps[k].versions = [];
+      if (p.steps[k].sel == null) p.steps[k].sel = 0;
+      if (k === 'draft' && !Array.isArray(p.steps[k].parts)) p.steps[k].parts = [];
+    });
+    if (!p.trends) p.trends = [];
+    if (p.useTrends === undefined) p.useTrends = true;
+    if (typeof p.title !== 'string') p.title = '未命名短篇';
+    return p;
+  }
+
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
   function newProject() {
@@ -91,6 +114,7 @@
   }
 
   window.Store = Store;
+  window.migrateProject = migrate;
   window.STEP_ORDER = STEPS;
   window.STEP_NAME = STEP_NAME;
   window.TIERS = TIERS;
