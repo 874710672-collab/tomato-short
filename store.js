@@ -57,8 +57,8 @@
   };
 
   /* ---------- 项目模型 ---------- */
-  const STEPS = ['topic', 'setting', 'outline', 'draft', 'polish'];
-  const STEP_NAME = { topic: '选题立意', setting: '设定人设', outline: '分节大纲', draft: '分节正文', polish: '润色成稿' };
+  const STEPS = ['topic', 'setting', 'outline', 'draft', 'polish', 'manual'];
+  const STEP_NAME = { topic: '选题立意', setting: '设定人设', outline: '分节大纲', draft: '分节正文', polish: '润色成稿', manual: '人工修改' };
   const TIERS = {
     s: { name: '短篇·小', min: 3000, max: 5000, parts: 3 },
     m: { name: '短篇·中', min: 8000, max: 12000, parts: 5 },
@@ -83,7 +83,8 @@
         setting: { status: 'idle', versions: [], sel: 0, feedback: '' },
         outline: { status: 'idle', versions: [], sel: 0, feedback: '' },
         draft: { status: 'idle', versions: [], sel: 0, feedback: '', partIdx: 0, parts: [] },
-        polish: { status: 'idle', versions: [], sel: 0, feedback: '' }
+        polish: { status: 'idle', versions: [], sel: 0, feedback: '' },
+        manual: { status: 'idle', versions: [], sel: 0, feedback: '', editor: '', lastSave: 0 }
       }
     };
     return p;
