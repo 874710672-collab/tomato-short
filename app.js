@@ -44,7 +44,10 @@
     s.onclick = (e) => { if (e.target === s) closeSheet(); };
     if (onMount) onMount($('#sheetBody'));
   }
-  function closeSheet() { $('#sheet').hidden = true; $('#sheet').classList.add('hide'); lockScroll(false); }
+  function closeSheet() {
+    if (window.__draftFlush) { try { window.__draftFlush(); } catch (e) {} window.__draftFlush = null; }
+    $('#sheet').hidden = true; $('#sheet').classList.add('hide'); lockScroll(false);
+  }
   function fmtTime(ts) {
     const d = new Date(ts);
     const z = (n) => String(n).padStart(2, '0');
@@ -1503,6 +1506,108 @@
     });
   }
 
+  /* ===== 草稿本：随时打开的自由写作窗口 ===== */
+  function openDraft() {
+    flushEdits();
+    // 按项目存：一个项目一本草稿；没项目则存公共草稿
+    const pid = (cur && cur.id) || '_global';
+    const key = 'ts_drafts_v1';
+    const readAll = () => { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) { return {}; } };
+    const all = readAll();
+    const d = all[pid] || { text: '', at: 0, notes: '' };
+    const projName = (cur && cur.title) || '公共草稿';
+
+    // 草稿列表（可新建多张纸）
+    if (!Array.isArray(d.sheets)) {
+      d.sheets = [{ id: 's1', name: '草稿 1', text: d.text || '' }];
+      d.active = 's1';
+    }
+    const save = () => {
+      all[pid] = d;
+      localStorage.setItem(key, JSON.stringify(all));
+    };
+
+    let active = d.sheets.find(x => x.id === d.active) || d.sheets[0];
+    d.active = active.id;
+
+    sheet(`
+      <h2>📝 草稿本 <span class="dr-proj">${esc(projName)}</span><button class="close">✕</button></h2>
+      <div class="dr-bar">
+        <div class="dr-tabs" id="drTabs"></div>
+        <button class="mini" id="drNew">＋ 新草稿</button>
+      </div>
+      <textarea class="dr-editor" id="drEditor" placeholder="随便写。想到什么写什么，不会影响正文。"></textarea>
+      <div class="dr-foot">
+        <span class="dr-count" id="drCount">0 字</span>
+        <span class="dr-hint">自动保存 · 只存在本机</span>
+        <div class="dr-acts">
+          <button class="mini" id="drCopy">复制</button>
+          <button class="mini" id="drToFb">写到审核意见</button>
+          <button class="mini danger" id="drDel">删除这张</button>
+        </div>
+      </div>
+    `, (body) => {
+      const ta = $('#drEditor', body);
+      const tabs = $('#drTabs', body);
+      const cnt = $('#drCount', body);
+
+      const drawTabs = () => {
+        tabs.innerHTML = '';
+        d.sheets.forEach(s => {
+          const b = el('button', 'dr-tab' + (s.id === active.id ? ' on' : ''), s.name || '草稿');
+          b.onclick = () => {
+            active.text = ta.value;
+            save();
+            active = s; d.active = s.id; save();
+            ta.value = s.text || '';
+            drawTabs(); upd();
+            ta.focus();
+          };
+          tabs.appendChild(b);
+        });
+      };
+      const upd = () => { cnt.textContent = Engine.countWords(ta.value) + ' 字'; };
+
+      ta.value = active.text || '';
+      upd(); drawTabs();
+
+      let t = null;
+      ta.oninput = () => {
+        cnt.textContent = Engine.countWords(ta.value) + ' 字';
+        clearTimeout(t);
+        t = setTimeout(() => { active.text = ta.value; save(); }, 350);
+      };
+
+      $('#drNew', body).onclick = () => {
+        active.text = ta.value; save();
+        const n = { id: 's' + Date.now().toString(36), name: '草稿 ' + (d.sheets.length + 1), text: '' };
+        d.sheets.push(n); d.active = n.id; active = n; save();
+        ta.value = ''; drawTabs(); upd(); ta.focus();
+      };
+      $('#drCopy', body).onclick = () => copy(ta.value);
+      $('#drToFb', body).onclick = () => {
+        if (!cur) { toast('先打开一个项目'); return; }
+        if (!ta.value.trim()) { toast('草稿是空的'); return; }
+        const s = cur.steps[cur.step];
+        s.feedback = (s.feedback ? s.feedback + '\n' : '') + ta.value.trim();
+        persist();
+        closeSheet(); render();
+        toast('已写进「' + STEP_NAME[cur.step] + '」的审核意见');
+      };
+      $('#drDel', body).onclick = () => {
+        if (d.sheets.length <= 1) { toast('至少留一张'); return; }
+        if (!confirm('删除「' + active.name + '」？')) return;
+        d.sheets = d.sheets.filter(x => x.id !== active.id);
+        active = d.sheets[0]; d.active = active.id; save();
+        ta.value = active.text || ''; drawTabs(); upd();
+      };
+
+      // 关窗时兜底保存
+      const orig = closeSheet;
+      window.__draftFlush = () => { if (active) { active.text = ta.value; save(); } };
+    });
+  }
+
   /* ===== 空状态 ===== */
   function renderEmpty() {
     stage.innerHTML = '';
@@ -1535,6 +1640,7 @@
     render();
   };
   $('#btnSet').onclick = openSettings;
+  $('#btnDraft').onclick = openDraft;
   $('#btnExport').onclick = openExport;
   els.bGen.onclick = () => {
     if (!cur) return;
@@ -1915,6 +2021,7 @@
     render();
   };
   $('#btnSet').onclick = openSettings;
+  $('#btnDraft').onclick = openDraft;
   $('#btnExport').onclick = openExport;
   els.bGen.onclick = () => {
     if (!cur) return;
