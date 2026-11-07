@@ -116,7 +116,7 @@
 
   function render() {
     flushEdits();
-    if (cur && window.migrateProject) cur = window.migrateProject(cur);
+    if (cur && window.migrateProject) window.migrateProject(cur);
     renderTop();
     renderSteps();
     $('#btnExport').hidden = !(view === 'project' && cur);
@@ -759,6 +759,7 @@
         s.sel = s.versions.length - 1;
         if (k === 'topic') s.picked = null;
         s.status = 'ready';
+        Store.save(cur);          // 立刻持久化
         persist();
       }
       s.history = s.history || [];
