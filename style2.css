@@ -219,3 +219,23 @@ input:focus,textarea:focus,select:focus{outline:2px solid rgba(185,166,255,.35);
 .ver-tab{background:var(--panel2);border-color:var(--line);color:var(--sub)}
 .mini{border-color:var(--line);color:var(--sub);background:transparent}
 .mini.danger{color:#ff8f7a;border-color:rgba(255,143,122,.3)}
+
+/* ===== 草稿本 ===== */
+.dr-proj{font-size:11px;font-weight:400;color:var(--sub);margin-left:6px}
+.dr-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px;overflow:hidden}
+.dr-tabs{display:flex;gap:6px;overflow-x:auto;flex:1;min-width:0;padding-bottom:2px}
+.dr-tab{
+  flex:0 0 auto;font-size:12px;padding:5px 11px;border-radius:9px;
+  background:var(--panel2);border:1px solid var(--line);color:var(--sub);white-space:nowrap;
+}
+.dr-tab.on{background:rgba(185,166,255,.16);border-color:var(--accent);color:var(--accent);font-weight:600}
+.dr-editor{
+  width:100%;min-height:min(52vh,460px);line-height:1.95;font-size:15px;
+  border:1px solid var(--line);border-radius:12px;padding:14px 16px;
+  background:var(--panel2);color:var(--txt);resize:vertical;
+}
+.dr-editor:focus{outline:2px solid rgba(185,166,255,.35);border-color:var(--accent)}
+.dr-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+.dr-count{font-size:12px;color:var(--accent);font-variant-numeric:tabular-nums;font-weight:600}
+.dr-hint{font-size:11px;color:var(--sub);flex:1;min-width:0}
+.dr-acts{display:flex;gap:6px;flex-wrap:wrap}
